@@ -57,6 +57,10 @@ def test_pi_extension_exposes_fail_closed_persistent_multi_goal_continuation() -
     for required_fragment in (
         'const AUTO_STATE_ENTRY = "loopx-pi-auto-state"',
         'pi.registerCommand("loopx-auto"',
+        "startGoalPreviewArgs(ctx.cwd, goalText)",
+        'phase: "activating"',
+        "goalIds: [goalId]",
+        'driveAuto(ctx, "loopx_goal_setup_settled")',
         'join(state.project, ".loopx", "registry.json")',
         '"turn",\n    "select"',
         '"--scheduler-owner",\n    "agent_cli_loop"',

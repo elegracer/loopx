@@ -80,7 +80,7 @@ def _start_instruction(agent_type: str) -> str:
     if agent_type == "claude-code":
         return "Run `/loopx <task>` to arm LoopX, then run native `/loop`."
     if agent_type == "pi":
-        return "Run `/loopx <task>`, then use `/loopx-turn` for one visible quota-gated bounded segment at a time."
+        return "Run `/loopx <task>`; the setup turn arms visible, quota-gated continuation for that goal."
     if agent_type == "manual":
         return "Use the CLI packet and wire an external scheduler, or run quota/status/todo commands manually."
     return "Use the host's explicit LoopX command facade such as `@loopx <task>` or `$loopx <task>`, then wire its scheduler through this packet."
@@ -255,6 +255,7 @@ def render_agent_onboarding_markdown(payload: dict[str, Any]) -> str:
             f"- host_surface: `{activation.get('host_surface')}`",
             f"- activation_method: `{activation.get('activation_method')}`",
             f"- activation_input_command: `{activation.get('activation_input_command')}`",
+            f"- activation_already_armed_by_entry: `{activation.get('activation_already_armed_by_entry', False)}`",
             "",
             "Steps:",
         ]

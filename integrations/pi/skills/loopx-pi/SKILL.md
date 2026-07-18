@@ -10,7 +10,8 @@ LoopX is the deterministic local control plane. Pi is the interactive executor. 
 
 - LoopX owns durable goal, gate, todo, quota, evidence, and handoff state.
 - Pi performs one bounded work segment using its normal read/bash/edit/write tools.
-- `/loopx-turn` is manual. `/loopx-auto start` explicitly opts the visible Pi session into persistent multi-goal continuation.
+- `/loopx <goal>` starts or reuses the goal and arms visible continuation for that goal after the setup turn settles. `/loopx-turn` remains manual.
+- `/loopx-auto` is the advanced controller surface for status, stop, resume, tick, multi-goal scope, and turn-budget replacement.
 - Auto mode uses only a session-scoped timer derived from LoopX cadence. It never installs a daemon, cron job, detached worker, or external heartbeat automation.
 
 Use `loopx_control` for supported operations. Do not construct raw `loopx` shell commands unless the structured tool lacks the required action.
@@ -50,7 +51,7 @@ For `/loopx` without a goal:
 
 ## Start Or Continue A Goal
 
-`/loopx <goal text>` is explicit user intent to create or reuse local LoopX state for that goal. It is not permission for external writes, publishing, production actions, destructive git, or persistent continuation. Only `/loopx-auto start` opts the current Pi session into continuation.
+`/loopx <goal text>` is explicit user intent to create or reuse local LoopX state and run bounded persistent continuation for that goal in the visible Pi session. It is not permission for external writes, publishing, production actions, destructive git, or work outside LoopX gates. The controller starts only after the setup turn settles.
 
 1. Call `start_goal` with the exact goal text. Read `project_connection` and `recommended_next_step`.
 2. If already connected, reuse the existing goal and todos. Never force bootstrap or replace state. Check `registered_agents`; when `pi-main` is absent, preview then execute `register_agent` for the existing goal before claiming work.
@@ -82,9 +83,9 @@ If work fails or remains incomplete, do not falsely complete the todo or spend q
 
 ## Persistent Multi-Goal Mode
 
-`/loopx-auto start [goal-id ...] [--max-turns N]` is explicit user permission for bounded continuation in the current visible Pi session. The default budget is 20 dispatched turns and the hard maximum is 100. Omit goal ids to consider every goal in the current project registry.
+`/loopx <goal text>` automatically starts this controller for the selected goal with a default budget of 20 dispatched turns. `/loopx-auto start [goal-id ...] [--max-turns N]` replaces the active scope or budget explicitly; omit goal ids to consider every goal in the current project registry. The hard maximum is 100 turns.
 
-Before starting, complete one normal Pi turn. Pi only flushes custom session entries durably after an assistant message exists, and the adapter refuses an empty-session start rather than claiming persistence it cannot guarantee.
+A direct `/loopx-auto start` in an otherwise empty session still requires one normal Pi turn because Pi only flushes custom session entries durably after an assistant message exists. `/loopx <goal text>` needs no preparatory turn: its own setup response establishes the session before the controller is persisted and dispatched.
 
 The controller must preserve these boundaries:
 

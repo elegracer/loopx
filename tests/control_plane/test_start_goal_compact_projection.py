@@ -12,6 +12,10 @@ from loopx.bootstrap_command_pack import (
     build_start_goal_guided_packet,
 )
 from loopx.cli import main as cli_main
+from loopx.control_plane.testing.onboarding_model_behavior_qualification import (
+    onboarding_entry_contract_violations,
+    onboarding_entry_semantic_contract,
+)
 
 
 GOAL_ID = "guided-projection-goal"
@@ -352,7 +356,7 @@ def test_codex_ide_plugin_uses_visible_goal_and_preserves_compact_parity(
     )
 
 
-def test_pi_guided_packet_keeps_scheduler_ack_out_of_visible_turns(
+def test_pi_guided_packet_arms_continuation_without_scheduler_ack(
     tmp_path: Path,
 ) -> None:
     project = _write_connected_project(tmp_path)
@@ -373,14 +377,17 @@ def test_pi_guided_packet_keeps_scheduler_ack_out_of_visible_turns(
     assert activation["host_surface"] == (
         "pi_session_persistent_multi_goal_turns"
     )
-    assert activation["activation_input_command"] == (
-        f"/loopx-auto start {GOAL_ID}"
+    assert activation["activation_method"] == (
+        "arm_pi_controller_from_loopx_goal_start"
     )
+    assert activation["activation_input_command"] == "/loopx <task>"
+    assert activation["activation_already_armed_by_entry"] is True
+    assert activation["host_mutation"]["host_command"] == "/loopx <task>"
     assert (
         pi_packet["command_pack"]["goal_start_contract"]["activation"][
             "begin_automation_when_quota_allows"
         ]
-        is False
+        is True
     )
 
     pi_step_ids = [step["id"] for step in pi_packet["guided_transaction"]["ordered_steps"]]
@@ -389,6 +396,13 @@ def test_pi_guided_packet_keeps_scheduler_ack_out_of_visible_turns(
     ]
     assert "scheduler_ack_when_needed" not in pi_step_ids
     assert "scheduler_ack_when_needed" in codex_step_ids
+    activation_step = next(
+        step
+        for step in pi_packet["guided_transaction"]["ordered_steps"]
+        if step["id"] == "activate_host_loop"
+    )
+    assert activation_step["command"] is None
+    assert "already armed visible continuation" in activation_step["purpose"]
     quota_step = next(
         step
         for step in pi_packet["guided_transaction"]["ordered_steps"]
@@ -396,3 +410,6 @@ def test_pi_guided_packet_keeps_scheduler_ack_out_of_visible_turns(
     )
     assert "never applies scheduler acknowledgements" in quota_step["purpose"]
     assert "read-only LoopX cadence" in quota_step["purpose"]
+
+    semantic_contract = onboarding_entry_semantic_contract(pi_packet)
+    assert onboarding_entry_contract_violations(semantic_contract) == []

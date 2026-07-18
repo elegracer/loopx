@@ -39,9 +39,10 @@ Contributors can run `scripts/install-pi-package.sh` directly from a checkout.
 Reload an already open pi session with `/reload`. The package exposes `/loopx`,
 `/loopx-turn`, `/loopx-auto`, `/loopx-status`, and the structured
 `loopx_control` tool. Pi is modeled as a visible interactive host:
-`/loopx-turn` performs one manual quota-gated segment, while explicit
-`/loopx-auto start [goal-id ...]` runs a bounded, session-persistent multi-goal
-controller. Its LoopX-cadence timer exists only inside the visible Pi process;
+`/loopx <goal>` arms bounded, session-persistent continuation for that goal,
+while `/loopx-turn` performs one manual quota-gated segment. `/loopx-auto`
+provides advanced multi-goal, budget, status, stop, resume, and tick controls.
+Its LoopX-cadence timer exists only inside the visible Pi process;
 the package installs no daemon, cron job, detached worker, or external heartbeat
 automation.
 

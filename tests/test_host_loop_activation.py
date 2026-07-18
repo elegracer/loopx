@@ -112,14 +112,15 @@ def test_pi_is_an_additive_visible_session_persistent_host() -> None:
 
     assert packet["host_surface"] == "pi_session_persistent_multi_goal_turns"
     assert packet["activation_method"] == (
-        "run_pi_session_persistent_multi_goal_controller"
+        "arm_pi_controller_from_loopx_goal_start"
     )
-    assert packet["activation_input_command"] == (
+    assert packet["activation_input_command"] == "/loopx <task>"
+    assert packet["activation_already_armed_by_entry"] is True
+    assert packet["host_mutation"]["host_command"] == "/loopx <task>"
+    assert packet["host_mutation"]["advanced_control_command"] == (
         "/loopx-auto start fixture-goal"
     )
-    assert packet["host_mutation"]["host_command"] == (
-        "/loopx-auto start fixture-goal"
-    )
+    assert packet["host_mutation"]["cli_can_mutate_directly"] is True
     assert packet["host_mutation"]["manual_host_command"] == "/loopx-turn"
     assert packet["setup_command"] == "loopx-pi-install"
     assert "session" in str(packet).lower()

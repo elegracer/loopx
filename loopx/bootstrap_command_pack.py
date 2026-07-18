@@ -604,7 +604,7 @@ def _goal_start_contract(*, goal_text: str | None, connected: bool, agent_type: 
                 "codex-app": "Codex App heartbeat automation",
                 "codex-cli": "visible Codex CLI `/goal <task_body>`",
                 "claude-code": "Claude Code native `/loop` after `/loopx <task>` arms LoopX",
-                "pi": "visible session-persistent `/loopx-auto` or manual `/loopx-turn` bounded segments",
+                "pi": "visible session-persistent controller armed by `/loopx <task>`",
                 "manual": "external scheduler or manual quota/status loop",
                 "other-agent": "custom host loop driver using the returned task body and quota guard",
             },
@@ -616,7 +616,7 @@ def _goal_start_contract(*, goal_text: str | None, connected: bool, agent_type: 
                 "Only recompute onboarding/activation when activation is missing, unknown, stale, "
                 "or the agent type changed; normal ticks should read quota/status/state directly."
             ),
-            "begin_automation_when_quota_allows": agent_type != "pi",
+            "begin_automation_when_quota_allows": True,
             "spend_quota_after_writeback": True,
         },
         "domain_route_hints": {
@@ -683,7 +683,7 @@ Planning rules:
 3. Every new todo starts with `[P0]`, `[P1]`, or `[P2]`; include at least one `[P0]` unless the first useful step is blocked by a user gate.
 4. If several todos share the same priority, their listed order is their relative priority. Preserve that exact order when writing them.
 5. Prefer executable Agent Todo items with `task_class=advancement_task`; use User Todo only for concrete owner decisions or private-material gates.
-6. After writing todos, run `loopx refresh-state --goal-id {goal_id}`, activate the host loop if it is missing, unknown, or stale (Codex App automation, Codex CLI `/goal <task_body>`, Claude Code `/loop`, pi `/loopx-auto start <goal-id>` (or manual `/loopx-turn`), or a custom host-loop gate), then run its typed `quota_guard` and begin the first allowed bounded segment.
+6. After writing todos, run `loopx refresh-state --goal-id {goal_id}`, activate the host loop if it is missing, unknown, or stale (Codex App automation, Codex CLI `/goal <task_body>`, Claude Code `/loop`, pi continuation already armed by `/loopx <task>`, or a custom host-loop gate), then run its typed `quota_guard` and begin the first allowed bounded segment.
 7. If the goal is a GitHub issue/PR fix, first preview `loopx issue-fix workflow-plan --url <github-issue-or-pr-url> --repo-path <approved-repo> --repository-context-json <compact-context.json> --validation-label '<validation command>' --format json`; write only metadata classification plus the feasibility checkpoint. Repository context should pin current repo policy, architecture, change-scope, reproduction, and validation refs; memory and external experts remain advisory until verified against the pinned revision. After a compact public-safe observation, run `loopx issue-fix feasibility --url <github-issue-url> --reproduction-status <state> --scope-class <scope> --repository-context-json <compact-context.json> --goal-id {goal_id} --format json` and write only its selected route successor or no-follow-up. Keep private repro material, body/comment reads, arbitrary external comments, PR creation, merge, publish, destructive git, and production actions as explicit gates. After a PR exists and `external_review_request` or `publish` authority is active, call `loopx issue-fix reviewer-request --url <github-pr-url> --repo-path <approved-repo> --base-ref <base-ref> --execute --format json`; it should try the formal request first and, only on confirmed permission denial, post one reviewer-tagging fallback comment. Do not mark notification complete until the request or fallback comment is visible on the PR. Then call `loopx issue-fix pr-lifecycle --url <github-pr-url> --goal-id {goal_id} --format json`; use `grouped_monitor_projection` for one monitor per nonempty state bucket. Never create one monitor per PR. Keep PR actions one-shot and messages at one PR per message.
 """
 
@@ -1300,6 +1300,16 @@ def build_start_goal_guided_packet(
             for step in guided_transaction["ordered_steps"]
             if step.get("id") != "scheduler_ack_when_needed"
         ]
+        activation_step = next(
+            step
+            for step in guided_transaction["ordered_steps"]
+            if step.get("id") == "activate_host_loop"
+        )
+        activation_step["command"] = None
+        activation_step["purpose"] = (
+            "confirm the pi package surface; `/loopx <task>` already armed visible "
+            "continuation for dispatch after the setup turn settles"
+        )
         quota_step = next(
             step
             for step in guided_transaction["ordered_steps"]
@@ -1579,12 +1589,17 @@ Host loop activation is part of setup, not a nice-to-have:
 - agent_type: `{payload.get("agent_type")}`
 - host_surface: `{activation.get("host_surface")}`
 - activation_method: `{activation.get("activation_method")}`
+- activation_already_armed_by_entry: `{activation.get("activation_already_armed_by_entry", False)}`
 
-If the host loop is already proven current, skip the mutation. If it is missing,
+If `activation_already_armed_by_entry` is true, the invoking `/loopx <task>`
+already performed the host mutation; keep the canonical activation input as a
+receipt and do not invoke it recursively. Otherwise, if the host loop is already
+proven current, skip the mutation. If it is missing,
 unknown, or stale, use the command above to obtain `task_body` and activate the
 right host loop: Codex App automation, Codex CLI `/goal <task_body>`, Claude
-Code `/loop`, pi `/loopx-auto start <goal-id>` (or manual `/loopx-turn`), or the custom host-loop gate. If this session cannot mutate that
-host surface, report the exact gate; do not claim autonomous setup complete.
+Code `/loop`, pi continuation armed by `/loopx <task>`, or the custom host-loop
+gate. If this session cannot mutate that host surface, report the exact gate; do
+not claim autonomous setup complete.
 Use `{commands.get("goal_start_agent_onboard_recheck", "")}` only when
 activation state is missing/unknown/stale or the agent type changed."""
     elif requires_confirmation:
@@ -1716,6 +1731,7 @@ Supported forms: `/loopx`, `/loopx <goal text>`
 - activation_method: `{activation.get("activation_method")}`
 - entry_command_hint: `{activation.get("entry_command_hint")}`
 - activation_input_command: `{activation.get("activation_input_command")}`
+- activation_already_armed_by_entry: `{activation.get("activation_already_armed_by_entry", False)}`
 - recheck_command: `{commands.get("goal_start_agent_onboard_recheck")}`
 
 ## Key Commands

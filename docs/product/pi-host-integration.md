@@ -35,10 +35,11 @@ The canonical LoopX agent type is `pi`, with aliases `pi-cli` and
 `pi_session_persistent_multi_goal_turns`:
 
 1. `/loopx <goal>` creates or reuses local LoopX state and a ranked todo
-   frontier.
+   frontier, then automatically arms visible continuation for that goal after
+   the setup turn settles.
 2. `/loopx-turn` runs exactly one manually requested quota-gated segment.
-3. `/loopx-auto start [goal-id ...] [--max-turns N]` explicitly starts visible,
-   session-persistent continuation. With no goal ids, all goals in the current
+3. `/loopx-auto start [goal-id ...] [--max-turns N]` explicitly replaces the
+   active goal scope or turn budget. With no goal ids, all goals in the current
    project registry are candidates.
 4. `/loopx-auto status|resume|tick|stop` controls that session loop.
 5. `/loopx-status` refreshes a compact read-only status widget.
@@ -53,9 +54,10 @@ workspace. A user gate pauses before isolated handoff; a cross-workspace goal
 is returned as `requires_isolated_session`; terminal stop requires every
 candidate goal to be terminal.
 
-Auto mode is opt-in and bounded to the visible pi process. It persists the
-fairness cursor, goal set, turn budget, plan identity, and wake time in pi custom
-session entries. Each turn starts only after `agent_settled`; wait timers come
+Auto mode is bounded to the visible pi process. `/loopx <goal>` opts in the
+selected goal; `/loopx-auto start` can replace that scope explicitly. The
+controller persists the fairness cursor, goal set, turn budget, plan identity,
+and wake time in pi custom session entries. Each turn starts only after `agent_settled`; wait timers come
 from LoopX scheduler cadence and are cleared on session shutdown. It never
 acknowledges scheduler state or spends quota on its own. Manual input, uncertain
 recovery, fork/tree navigation, user gates, contract errors, an unchanged
@@ -63,9 +65,10 @@ per-goal turn key after dispatch, exhausted budget, and cross-workspace
 execution all pause fail closed.
 
 Pi does not flush extension custom entries for an otherwise empty session until
-an assistant message exists. Therefore `/loopx-auto start` requires one normal
-Pi turn first; this makes the persistence guarantee explicit rather than
-leaving wait-only controller state in memory.
+an assistant message exists. A direct `/loopx-auto start` therefore requires one
+normal Pi turn first. `/loopx <goal>` needs no preparatory turn: its setup
+response establishes the session, after which `agent_settled` persists and
+starts the controller.
 
 ## Accountable Delivery
 
@@ -113,6 +116,7 @@ python3 examples/control_plane/agent-onboard-host-loop-activation-smoke.py
 loopx-pi-install --dry-run
 ```
 
-After local installation, reload pi, complete one normal Pi turn, and use
-`/loopx-status` before starting a real goal. Start one persistent goal with
-`/loopx-auto start <goal-id>` or use `/loopx-turn` for manual one-shot work.
+After local installation, reload pi and use `/loopx-status` to inspect existing
+state. Start a persistent goal with `/loopx <goal>` or use `/loopx-turn` for
+manual one-shot work. Use `/loopx-auto start` only when replacing the active
+goal set or turn budget.

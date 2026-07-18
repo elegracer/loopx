@@ -133,7 +133,7 @@ type ExecContext = {
   signal?: AbortSignal;
 };
 
-type AutoPhase = "idle" | "armed" | "planning" | "running" | "waiting" | "paused" | "completed";
+type AutoPhase = "idle" | "activating" | "armed" | "planning" | "running" | "waiting" | "paused" | "completed";
 
 type AutoState = {
   schemaVersion: typeof AUTO_STATE_SCHEMA_VERSION;
@@ -209,7 +209,16 @@ function normalizeAutoState(value: unknown, project: string): AutoState | undefi
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Partial<AutoState>;
   if (raw.schemaVersion !== AUTO_STATE_SCHEMA_VERSION) return undefined;
-  const phases = new Set<AutoPhase>(["idle", "armed", "planning", "running", "waiting", "paused", "completed"]);
+  const phases = new Set<AutoPhase>([
+    "idle",
+    "activating",
+    "armed",
+    "planning",
+    "running",
+    "waiting",
+    "paused",
+    "completed",
+  ]);
   const phase = phases.has(raw.phase as AutoPhase) ? (raw.phase as AutoPhase) : "paused";
   const maxTurns = Math.min(MAX_AUTO_TURNS, Math.max(1, Number(raw.maxTurns) || DEFAULT_AUTO_MAX_TURNS));
   return {
@@ -328,6 +337,25 @@ function addCapabilities(args: string[]): void {
   for (const capability of DEFAULT_CAPABILITIES) {
     args.push("--available-capability", capability);
   }
+}
+
+function startGoalPreviewArgs(project: string, goalText: string): string[] {
+  const args = [
+    "--format",
+    "json",
+    "start-goal",
+    "--guided",
+    "--project",
+    project,
+    "--host-surface",
+    "pi",
+    "--agent-id",
+    DEFAULT_AGENT_ID,
+    "--goal-text",
+    goalText,
+  ];
+  addCapabilities(args);
+  return args;
 }
 
 function buildArgs(
@@ -1034,25 +1062,11 @@ export default function loopxPiAdapter(pi: ExtensionAPI) {
         return;
       }
       const goalText = args.trim();
+      const commandArgs = goalText
+        ? startGoalPreviewArgs(ctx.cwd, goalText)
+        : ["--format", "json", "status", "--limit", "20"];
       if (ctx.mode === "print") {
         try {
-          const commandArgs = goalText
-            ? [
-                "--format",
-                "json",
-                "start-goal",
-                "--guided",
-                "--project",
-                ctx.cwd,
-                "--host-surface",
-                "pi",
-                "--agent-id",
-                DEFAULT_AGENT_ID,
-                "--goal-text",
-                goalText,
-              ]
-            : ["--format", "json", "status", "--limit", "20"];
-          if (goalText) addCapabilities(commandArgs);
           const result = await pi.exec(LOOPX_BIN, commandArgs, { cwd: ctx.cwd, timeout: TOOL_TIMEOUT_MS });
           if (result.code !== 0) throw new Error(result.stderr || result.stdout || "LoopX command failed");
           const payload = JSON.parse(result.stdout) as Record<string, unknown>;
@@ -1071,8 +1085,32 @@ export default function loopxPiAdapter(pi: ExtensionAPI) {
         return;
       }
 
+      if (goalText) {
+        try {
+          const result = await pi.exec(LOOPX_BIN, commandArgs, { cwd: ctx.cwd, timeout: TOOL_TIMEOUT_MS });
+          if (result.code !== 0) throw new Error(result.stderr || result.stdout || "LoopX goal preview failed");
+          const payload = JSON.parse(result.stdout) as Record<string, unknown>;
+          const goalId = String(payload.goal_id ?? "").trim();
+          if (!goalId) throw new Error("LoopX goal preview returned no goal id");
+          clearAutoTimer();
+          cancelAutoPlan();
+          autoGeneration += 1;
+          autoState = {
+            ...defaultAutoState(ctx.cwd, DEFAULT_AGENT_ID),
+            enabled: true,
+            phase: "activating",
+            goalIds: [goalId],
+            revision: autoState.revision,
+          };
+          updateAutoStatus(ctx);
+        } catch (error) {
+          ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+          return;
+        }
+      }
+
       const request = goalText
-        ? `Start or continue this LoopX goal in the current project: ${goalText}\n\nThis /loopx invocation is explicit user intent to create or reuse local LoopX state. Load the loopx-pi skill, use loopx_control start_goal first, connect only if needed, create a concise ranked todo plan without duplicates, then run the first quota-allowed bounded segment. Do not install a background scheduler.`
+        ? `Start or continue this LoopX goal in the current project: ${goalText}\n\nThis /loopx invocation is explicit user intent to create or reuse local LoopX state and activates visible session continuation for that goal. Load the loopx-pi skill, use loopx_control start_goal first, connect only if needed, create a concise ranked todo plan without duplicates, then run the first quota-allowed bounded segment. Stop after that segment; the pi host controller will select any later turn after agent_settled. Do not install a background scheduler.`
         : "Inspect the current project's LoopX state in read-only mode. Load the loopx-pi skill, use loopx_control status, and report the active goal, user gate, top runnable agent todo, and next safe action. Do not mutate state.";
       pi.sendUserMessage(request);
     },
@@ -1212,6 +1250,28 @@ export default function loopxPiAdapter(pi: ExtensionAPI) {
 
   pi.on("agent_settled", async (_event, ctx) => {
     if (!supportsAutoMode(ctx) || !autoState.enabled) return;
+    if (autoState.phase === "activating") {
+      if (!hasDurableSession(ctx)) {
+        autoState = {
+          ...autoState,
+          enabled: false,
+          phase: "paused",
+          pauseReason: "pi did not establish a durable session after /loopx setup",
+        };
+        updateAutoStatus(ctx);
+        ctx.ui.notify(`LoopX auto paused: ${autoState.pauseReason}`, "warning");
+        return;
+      }
+      autoState = {
+        ...autoState,
+        phase: "armed",
+        nextWakeAt: undefined,
+        pauseReason: undefined,
+      };
+      persistAutoState(ctx);
+      await driveAuto(ctx, "loopx_goal_setup_settled");
+      return;
+    }
     if (autoState.phase === "running") {
       autoState = {
         ...autoState,
@@ -1264,7 +1324,7 @@ export default function loopxPiAdapter(pi: ExtensionAPI) {
       pauseAuto(ctx, "saved controller project does not match this session", false);
     } else if (event.reason === "fork" && autoState.enabled) {
       pauseAuto(ctx, "forked session requires explicit /loopx-auto resume", false);
-    } else if (autoState.enabled && ["planning", "running"].includes(autoState.phase)) {
+    } else if (autoState.enabled && ["activating", "planning", "running"].includes(autoState.phase)) {
       pauseAuto(ctx, "previous dispatch outcome is uncertain; resume explicitly", false);
     } else if (autoState.enabled && autoState.phase === "waiting" && autoState.nextWakeAt) {
       const remainingSeconds = Math.max(

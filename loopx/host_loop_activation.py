@@ -92,7 +92,7 @@ AGENT_TYPE_CATALOG: dict[str, dict[str, Any]] = {
     "pi": {
         "display_name": "pi coding agent",
         "host_loop": "visible session-persistent multi-goal LoopX controller",
-        "entry": "/loopx <task> then /loopx-auto start <goal-id>",
+        "entry": "/loopx <task>",
         "accepted_inputs": ["pi", "pi-cli", "pi coding agent"],
     },
     "manual": {
@@ -473,18 +473,19 @@ def _claude_code_activation(commands: dict[str, str], cli_bin: str) -> dict[str,
 
 
 def _pi_activation(goal_id: str) -> dict[str, Any]:
-    auto_command = f"/loopx-auto start {goal_id}"
     return {
         "host_surface": "pi_session_persistent_multi_goal_turns",
-        "entry_command_hint": f"/loopx <task> then {auto_command}",
-        "activation_method": "run_pi_session_persistent_multi_goal_controller",
-        "activation_input_command": auto_command,
+        "entry_command_hint": "/loopx <task>",
+        "activation_method": "arm_pi_controller_from_loopx_goal_start",
+        "activation_input_command": "/loopx <task>",
+        "activation_already_armed_by_entry": True,
         "setup_command": "loopx-pi-install",
         "host_mutation": {
             "owner": "pi interactive CLI",
-            "host_command": auto_command,
+            "host_command": "/loopx <task>",
+            "advanced_control_command": f"/loopx-auto start {goal_id}",
             "manual_host_command": "/loopx-turn",
-            "cli_can_mutate_directly": False,
+            "cli_can_mutate_directly": True,
             "missing_host_tool_gate": (
                 "The LoopX pi package is unavailable; install integrations/pi, "
                 "reload pi, and report that concrete gate instead of falling back "
@@ -493,13 +494,14 @@ def _pi_activation(goal_id: str) -> dict[str, Any]:
         },
         "activation_steps": [
             "Install or refresh the opt-in LoopX pi package and reload pi.",
-            "Complete one normal pi turn so the session file is durably established.",
-            "Run `/loopx <task>` to create or reuse the goal and ranked todos.",
-            f"Run `{auto_command}`; add more goal ids to opt into fair multi-goal selection.",
+            "Run `/loopx <task>` to create or reuse the goal and ranked todos; this entry arms continuation for that goal.",
+            "After the setup turn settles, persist the controller and enter the first LoopX-selected continuation turn.",
+            "Use `/loopx-auto` only to inspect, stop, resume, tick, replace the goal set, or set a different turn budget.",
             "Keep the pi session visible; its in-process controller wakes only from LoopX cadence and stops with the session.",
         ],
         "success_criteria": [
             "pi exposes /loopx, /loopx-turn, /loopx-auto, /loopx-status, and loopx_control.",
+            "A successful `/loopx <task>` setup arms visible continuation without a second start command.",
             "Every dispatched turn is a current-workspace LoopX selection and consumes at most one validated quota slot.",
             "Controller state survives pi session resume, while user gates, cross-workspace goals, manual input, and uncertain recovery pause fail closed.",
             "No daemon, cron job, detached worker, or unrelated agent integration is installed or changed.",

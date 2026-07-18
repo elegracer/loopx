@@ -34,17 +34,19 @@ not change LoopX's Codex, Claude Code, manual, or custom-agent integrations.
 
 The adapter has two visible execution modes:
 
+- `/loopx <goal>` starts or reuses a goal and automatically arms persistent
+  continuation for that goal after the setup turn settles. The default budget
+  is 20 dispatched turns.
 - `/loopx-turn` runs one manually requested, quota-gated work segment.
-- `/loopx-auto start [goal-id ...] [--max-turns N]` opts the current pi session
-  into persistent multi-goal continuation. Omit goal ids to use all goals in the
-  current project registry. The default budget is 20 dispatched turns; the hard
-  maximum is 100.
 
 Auto mode persists its controller state in the pi session, uses LoopX's typed
 multi-goal plan and scheduler-derived cadence, and dispatches at most one
-current-workspace turn after `agent_settled`. A new empty pi session must first
-complete one normal turn so Pi has durably established its session file.
-`/loopx-auto status`, `resume`, `tick`, and `stop` inspect or control the loop.
+current-workspace turn after `agent_settled`. `/loopx-auto status`, `resume`,
+`tick`, and `stop` inspect or control the loop. `/loopx-auto start [goal-id ...]
+[--max-turns N]` explicitly replaces the active goal scope or budget; omit goal
+ids to use all project goals. The hard maximum is 100 turns. A direct
+`/loopx-auto start` in a new empty session requires one prior normal turn, while
+`/loopx <goal>` uses its own setup response to establish durable session state.
 
 The adapter never installs a daemon, cron job, detached worker, or external
 heartbeat automation. Its timer exists only inside the visible pi process and
