@@ -21,7 +21,10 @@ Contributors can run `scripts/install-pi-package.sh` directly from a checkout.
 Run `/reload` in an already open pi session. The installer copies the reviewed
 package into the stable managed path `~/.local/share/loopx/pi-package` and
 delegates to `pi install` with that path. A management marker prevents it from
-replacing an unrelated directory. It does not install a daemon, cron job,
+replacing an unrelated directory. It unregisters the known legacy
+`~/.pi/agent/packages/loopx-pi` settings entry only when the old manifest
+exactly matches `loopx-pi-adapter@0.1.0`; the old directory is retained and
+unknown packages are untouched. It does not install a daemon, cron job,
 detached worker, external heartbeat automation, Codex skill, Claude Code
 adapter, or slash command for another host.
 

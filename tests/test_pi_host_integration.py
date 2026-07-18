@@ -126,6 +126,7 @@ def test_pi_installer_uses_a_stable_managed_copy_and_rolls_back_on_failure(
     env = {
         **os.environ,
         "LOOPX_PI_INSTALL_ROOT": str(install_root),
+        "PI_CODING_AGENT_DIR": str(tmp_path / "pi-agent"),
         "PI_BIN": str(fake_pi),
         "PI_CAPTURE": str(capture),
     }
@@ -151,6 +152,122 @@ def test_pi_installer_uses_a_stable_managed_copy_and_rolls_back_on_failure(
         [str(installer)],
         cwd=REPO_ROOT,
         env={**env, "PI_BIN": str(failing_pi)},
+        check=False,
+    )
+
+    assert failed.returncode != 0
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
+def test_pi_installer_migrates_only_the_known_legacy_package(
+    tmp_path: Path,
+) -> None:
+    installer = REPO_ROOT / "scripts" / "install-pi-package.sh"
+    agent_dir = tmp_path / "pi-agent"
+    legacy = agent_dir / "packages" / "loopx-pi"
+    legacy.mkdir(parents=True)
+    (legacy / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "loopx-pi-adapter",
+                "version": "0.1.0",
+                "private": True,
+                "pi": {
+                    "extensions": ["./extensions/loopx.ts"],
+                    "skills": ["./skills"],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (agent_dir / "settings.json").write_text(
+        json.dumps({"packages": ["packages/loopx-pi"]}),
+        encoding="utf-8",
+    )
+    capture = tmp_path / "pi-args.txt"
+    fake_pi = tmp_path / "pi-ok"
+    fake_pi.write_text(
+        "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" >> \"$PI_CAPTURE\"\n",
+        encoding="utf-8",
+    )
+    fake_pi.chmod(0o755)
+    install_root = tmp_path / "loopx-share"
+    env = {
+        **os.environ,
+        "LOOPX_PI_INSTALL_ROOT": str(install_root),
+        "PI_CODING_AGENT_DIR": str(agent_dir),
+        "PI_BIN": str(fake_pi),
+        "PI_CAPTURE": str(capture),
+    }
+
+    result = subprocess.run(
+        [str(installer)],
+        cwd=REPO_ROOT,
+        env=env,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    target = install_root / "pi-package"
+    assert capture.read_text(encoding="utf-8").splitlines() == [
+        "install",
+        str(target),
+        "remove",
+        str(legacy),
+    ]
+    assert legacy.is_dir()
+    assert "unregistered legacy source packages/loopx-pi" in result.stdout
+
+
+def test_pi_installer_restores_managed_copy_when_legacy_unregister_fails(
+    tmp_path: Path,
+) -> None:
+    installer = REPO_ROOT / "scripts" / "install-pi-package.sh"
+    install_root = tmp_path / "loopx-share"
+    target = install_root / "pi-package"
+    target.mkdir(parents=True)
+    (target / ".loopx-managed-pi-package").touch()
+    sentinel = target / "rollback-sentinel"
+    sentinel.write_text("keep", encoding="utf-8")
+
+    agent_dir = tmp_path / "pi-agent"
+    legacy = agent_dir / "packages" / "loopx-pi"
+    legacy.mkdir(parents=True)
+    (legacy / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "loopx-pi-adapter",
+                "version": "0.1.0",
+                "private": True,
+                "pi": {
+                    "extensions": ["./extensions/loopx.ts"],
+                    "skills": ["./skills"],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (agent_dir / "settings.json").write_text(
+        json.dumps({"packages": ["packages/loopx-pi"]}),
+        encoding="utf-8",
+    )
+    fake_pi = tmp_path / "pi-remove-fails"
+    fake_pi.write_text(
+        "#!/usr/bin/env bash\n[[ \"${1:-}\" != remove ]]\n",
+        encoding="utf-8",
+    )
+    fake_pi.chmod(0o755)
+
+    failed = subprocess.run(
+        [str(installer)],
+        cwd=REPO_ROOT,
+        env={
+            **os.environ,
+            "LOOPX_PI_INSTALL_ROOT": str(install_root),
+            "PI_CODING_AGENT_DIR": str(agent_dir),
+            "PI_BIN": str(fake_pi),
+        },
         check=False,
     )
 

@@ -16,8 +16,12 @@ Contributors can run `scripts/install-pi-package.sh` directly from a checkout.
 Then run `/reload` in an already open pi session. The script syncs the reviewed
 package into the stable managed path `~/.local/share/loopx/pi-package` before
 registering it, so LoopX release snapshot updates do not create a new pi package
-identity. It refuses to replace an unmarked existing directory. The script does
-not change LoopX's Codex, Claude Code, manual, or custom-agent integrations.
+identity. It refuses to replace an unmarked existing directory. After the new
+package is registered, it unregisters the known legacy
+`~/.pi/agent/packages/loopx-pi` entry only when that manifest exactly matches
+`loopx-pi-adapter@0.1.0`; it does not delete the legacy directory or migrate an
+unknown package. The script does not change LoopX's Codex, Claude Code, manual,
+or custom-agent integrations.
 
 ## Resources
 
