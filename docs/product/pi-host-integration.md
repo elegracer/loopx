@@ -42,14 +42,26 @@ The canonical LoopX agent type is `pi`, with aliases `pi-cli` and
 2. `/loopx <goal>` creates or reuses local LoopX state and a ranked todo
    frontier, then automatically arms visible continuation for that goal after
    the setup turn settles.
-3. `/loopx-turn` runs exactly one manually requested quota-gated segment.
-4. `/loopx-auto start [goal-id ...] [--max-turns N]` explicitly replaces the
+3. `/loopx-global-summary`, `/loopx-global-gates`, `/loopx-global-todos`, and
+   `/loopx-global-risks` run the canonical public-safe global packet first and
+   render read-only manager views. Legacy `/loop-global-*` inputs canonicalize
+   to these names without becoming primary help entries.
+4. `/loopx-pr-review` runs the complete JSON PR-review packet first, then uses
+   the dedicated upstream skill to read selected PR evidence and fill the
+   required five-block review. It never comments, approves, merges, or spends
+   quota.
+5. Unknown `/loopx-*` commands fail closed with `loopx slash-commands` help.
+6. `/loopx-turn` runs exactly one manually requested quota-gated segment.
+7. `/loopx-auto start [goal-id ...] [--max-turns N]` explicitly replaces the
    active goal scope or turn budget. With no goal ids, all goals in the current
    project registry are candidates.
-5. `/loopx-auto status|resume|tick|stop` controls that session loop.
-6. `/loopx-status` refreshes a compact read-only status widget.
-7. `loopx_control` exposes allow-listed structured CLI actions. Mutations remain
-   previews unless `execute=true` is explicit.
+8. `/loopx-auto status|resume|tick|stop` controls that session loop.
+9. `/loopx-status` refreshes a compact read-only status widget.
+10. `loopx_control` exposes allow-listed structured CLI actions. Mutations
+    remain previews unless `execute=true` is explicit.
+
+The first five items are the upstream canonical host command contract. The
+remaining slash commands are Pi-only additive controls.
 
 The core `loopx turn select` command collects each goal's canonical Turn plan,
 classifies its workspace, and returns one read-only multi-goal decision. It does
@@ -118,10 +130,13 @@ Run the focused package and host tests:
 ```bash
 python3 -m pytest -q tests/test_host_loop_activation.py tests/test_pi_host_integration.py tests/control_plane/test_start_goal_compact_projection.py
 python3 examples/control_plane/agent-onboard-host-loop-activation-smoke.py
+python3 examples/project/global-manager-command-protocol-smoke.py
+python3 examples/pr-review-command-smoke.py
 loopx-pi-install --dry-run
 ```
 
 After local installation, reload pi and use `/loopx-status` to inspect existing
-state. Start a persistent goal with `/loopx <goal>` or use `/loopx-turn` for
-manual one-shot work. Use `/loopx-auto start` only when replacing the active
-goal set or turn budget.
+state. Use `/loopx-global-summary` for the canonical global digest and
+`/loopx-pr-review` for the evidence-backed review queue. Start a persistent goal
+with `/loopx <goal>` or use `/loopx-turn` for manual one-shot work. Use
+`/loopx-auto start` only when replacing the active goal set or turn budget.

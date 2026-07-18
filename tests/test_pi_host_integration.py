@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
+
+from loopx.slash_commands import build_slash_command_catalog
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -24,9 +27,86 @@ def test_pi_package_manifest_and_resources_are_self_contained() -> None:
     for relative_path in (
         "extensions/loopx.ts",
         "skills/loopx-pi/SKILL.md",
+        "skills/loopx-pr-review/SKILL.md",
         "README.md",
     ):
         assert (PI_PACKAGE / relative_path).is_file(), relative_path
+
+    assert (PI_PACKAGE / "skills" / "loopx-pr-review" / "SKILL.md").read_text(
+        encoding="utf-8"
+    ) == (REPO_ROOT / "skills" / "loopx-pr-review" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_pi_extension_covers_the_upstream_canonical_command_catalog() -> None:
+    source = (PI_PACKAGE / "extensions" / "loopx.ts").read_text(encoding="utf-8")
+    catalog = build_slash_command_catalog(include_legacy_aliases=True)
+    commands = catalog["commands"]
+    canonical_names = {
+        str(item["command"]).split()[0].removeprefix("/") for item in commands
+    }
+    legacy_names = {
+        str(alias).removeprefix("/")
+        for item in commands
+        for alias in item.get("legacy_aliases", [])
+    }
+
+    assert canonical_names == {
+        "loopx",
+        "loopx-global-summary",
+        "loopx-global-gates",
+        "loopx-global-todos",
+        "loopx-global-risks",
+        "loopx-pr-review",
+    }
+    literal_registrations = set(
+        re.findall(r'pi\.registerCommand\("([^"]+)"', source)
+    )
+    manager_table_names = set(
+        re.findall(r'name: "(loopx-global-[^"]+)"', source)
+    )
+    assert canonical_names <= literal_registrations | manager_table_names
+    assert "for (const spec of GLOBAL_MANAGER_COMMANDS)" in source
+    assert "pi.registerCommand(spec.name" in source
+
+    for legacy_name in legacy_names:
+        assert f'legacyName: "{legacy_name}"' in source
+        assert legacy_name not in literal_registrations
+    assert "GLOBAL_MANAGER_BY_LEGACY_NAME.get" in source
+    assert 'slash.name.startsWith("loopx-")' in source
+    assert "showSlashCommandHelp(pi, ctx, slash.name)" in source
+
+
+def test_pi_canonical_read_only_commands_run_the_cli_packet_first() -> None:
+    source = (PI_PACKAGE / "extensions" / "loopx.ts").read_text(encoding="utf-8")
+
+    for required_fragment in (
+        'const READ_ONLY_COMMAND_TIMEOUT_MS = 300_000',
+        '["--format", "json", "global-summary"]',
+        '"global_manager_command_response_v0"',
+        '["--format", "json", "pr-review"]',
+        'new Set(["--repo", "--state", "--since", "--limit"])',
+        '"loopx_pr_review_command_response_v0"',
+        "assertGlobalManagerPacket(packet)",
+        "assertPrReviewPacket(packet)",
+        "contract?.required_packet_fields_to_preserve",
+        "contract?.required_final_sections",
+        "groups?.unmerged",
+        "groups?.merged",
+        "item.review_template",
+        "item.evidence_commands",
+        "assertSlashCommandCatalog(packet)",
+        "slashCommandHelpText(packet, unknownName)",
+        "pi.sendUserMessage(globalManagerHandoffPrompt",
+        "pi.sendUserMessage(prReviewHandoffPrompt",
+        '["--format", "json", "slash-commands"]',
+        '"loopx_slash_command_catalog_v0"',
+    ):
+        assert required_fragment in source
+
+    assert "exec(`${LOOPX_BIN}" not in source
+    assert "exec(LOOPX_BIN, rawArgs" not in source
 
 
 def test_pi_extension_covers_loopx_027_writeback_guards() -> None:

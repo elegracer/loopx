@@ -25,10 +25,13 @@ or custom-agent integrations.
 
 ## Resources
 
-- `extensions/loopx.ts`: `/loopx`, `/loopx-turn`, `/loopx-auto`,
-  `/loopx-status`, and the structured `loopx_control` tool.
+- `extensions/loopx.ts`: the canonical `/loopx`, `/loopx-global-*`, and
+  `/loopx-pr-review` commands; migration aliases; Pi-only `/loopx-turn`,
+  `/loopx-auto`, `/loopx-status`; and the structured `loopx_control` tool.
 - `skills/loopx-pi/SKILL.md`: pi-specific lifecycle, quota, todo, vision,
   writeback, and safety rules.
+- `skills/loopx-pr-review/SKILL.md`: the upstream read-only PR queue and
+  five-block evidence review contract.
 
 ## Requirements
 
@@ -44,6 +47,21 @@ The adapter preserves the canonical LoopX entry behavior:
   continuation for that goal after the setup turn settles. The default budget
   is 20 dispatched turns.
 - `/loopx-turn` runs one manually requested, quota-gated work segment.
+
+The canonical manager and review commands match `loopx slash-commands`:
+
+- `/loopx-global-summary`, `/loopx-global-gates`, `/loopx-global-todos`, and
+  `/loopx-global-risks` run and validate the same public-safe
+  `loopx --format json global-summary` packet first, then ask Pi to render the
+  requested read-only view.
+- `/loopx-pr-review` runs and validates the complete JSON PR-review packet
+  before Pi reads per-PR evidence. It preserves both lifecycle groups, the
+  blank five-block templates, evidence commands, and completeness contract.
+- Legacy `/loop-global-*` inputs are accepted and canonicalized without being
+  advertised as primary commands. Unknown `/loopx-*` inputs fail closed to
+  `loopx slash-commands` help instead of becoming ordinary chat.
+- `/loopx-turn`, `/loopx-auto`, and `/loopx-status` are Pi-only additive
+  controls; they do not replace an upstream canonical command.
 
 Auto mode persists its controller state in the pi session, uses LoopX's typed
 multi-goal plan and scheduler-derived cadence, and dispatches at most one

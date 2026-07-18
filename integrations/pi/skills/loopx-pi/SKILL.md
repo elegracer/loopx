@@ -1,6 +1,6 @@
 ---
 name: loopx-pi
-description: Operate LoopX long-running goals from pi. Use for /loopx, /loopx-turn, persistent project goals, quota-gated work, LoopX todo ownership, state writeback, or handoff across agent sessions.
+description: Operate LoopX long-running goals from pi. Use for /loopx, /loopx-global-* manager reads, /loopx-turn, persistent project goals, quota-gated work, LoopX todo ownership, state writeback, or handoff across agent sessions.
 compatibility: Requires LoopX 0.2.7+ on PATH and the loopx-pi-adapter extension.
 ---
 
@@ -12,6 +12,8 @@ LoopX is the deterministic local control plane. Pi is the interactive executor. 
 - Pi performs one bounded work segment using its normal read/bash/edit/write tools.
 - `/loopx <goal>` starts or reuses the goal and arms visible continuation for that goal after the setup turn settles. `/loopx-turn` remains manual.
 - `/loopx-auto` is the advanced controller surface for status, stop, resume, tick, multi-goal scope, and turn-budget replacement.
+- `/loopx-global-summary`, `/loopx-global-gates`, `/loopx-global-todos`, and `/loopx-global-risks` are canonical read-only manager views over one public-safe global packet.
+- `/loopx-pr-review` is owned by the narrower `loopx-pr-review` skill after the Pi host has run the complete CLI packet first.
 - Auto mode uses only a session-scoped timer derived from LoopX cadence. It never installs a daemon, cron job, detached worker, or external heartbeat automation.
 
 Use `loopx_control` for supported operations. Do not construct raw `loopx` shell commands unless the structured tool lacks the required action.
@@ -39,6 +41,19 @@ LoopX 0.2.7 binds accountable delivery to the Git checkout that produced it.
 - For a material refresh, provide a bounded vision patch with `visionState`, `visionSummary`, `visionRoleScope`, `visionAcceptance`, and the relevant continuation fields.
 - Use `visionUnchangedReason` only after an agent vision baseline exists and its acceptance boundary is genuinely unchanged.
 - A workspace or vision guard failure is a blocker to fix, not permission to spend from another directory or omit the checkpoint.
+
+## Canonical Read-Only Commands
+
+The Pi host executes and schema-validates the canonical CLI packet before it asks the model to render these views:
+
+- `/loopx-global-summary`: summarize visible projects, gates, monitor status, and next safe actions.
+- `/loopx-global-gates`: focus on open gates, blocked work, owners, and exact next questions.
+- `/loopx-global-todos`: focus on prioritized runnable, blocked, deferred-ready, and review work plus ownership.
+- `/loopx-global-risks`: focus on stale work, boundary warnings, failing checks, and rollback candidates.
+
+All four commands use `loopx --format json global-summary` as their compact source. They must not approve gates, mutate todos, spend quota, merge, publish, or control automation. Legacy `/loop-global-*` forms canonicalize to these names. Unknown `/loopx-*` names fail closed to `loopx slash-commands` help.
+
+For `/loopx-pr-review`, stop this broad workflow and load the `loopx-pr-review` skill. The host-provided packet is authoritative: do not reconstruct the queue before reading it, do not discard its contract-bearing fields, and do not perform GitHub writes.
 
 ## Read-Only Inspection
 
