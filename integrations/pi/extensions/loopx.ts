@@ -421,6 +421,12 @@ function buildArgs(
         required(goalId, "goalId"),
         "--agent-id",
         agentId,
+        "--host-surface",
+        "generic_cli",
+        "--scheduler-owner",
+        "agent_cli_loop",
+        "--execution-mode",
+        "interactive",
         "--turn-envelope",
       ];
       addCapabilities(args);

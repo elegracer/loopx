@@ -561,6 +561,47 @@ def test_quota_cli_projects_outer_controller_without_codex_app_action(
     assert hint["execution_phase"]["ack_needed"] is False
 
 
+def test_quota_cli_projects_pi_agent_loop_context(tmp_path: Path) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    output = io.StringIO()
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "quota",
+                "should-run",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--host-surface",
+                "generic_cli",
+                "--scheduler-owner",
+                "agent_cli_loop",
+                "--execution-mode",
+                "interactive",
+                "--scan-root",
+                str(project),
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    hint = payload["scheduler_hint"]
+    assert exit_code == 0, payload
+    assert hint["execution_context"]["valid"] is True
+    assert hint["execution_context"]["host_surface"] == "generic_cli"
+    assert hint["execution_phase"]["scheduler_owner"] == "agent_cli_loop"
+    assert hint["execution_phase"]["completed"] is True
+    assert hint["execution_phase"]["apply_needed"] is False
+    assert hint["execution_phase"]["ack_needed"] is False
+
+
 def test_quota_cli_without_scheduler_context_fails_closed(tmp_path: Path) -> None:
     project, runtime, registry = _write_live_fixture(tmp_path)
     output = io.StringIO()

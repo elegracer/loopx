@@ -34,6 +34,9 @@ def test_pi_extension_covers_loopx_027_writeback_guards() -> None:
 
     for required_fragment in (
         '"--host-surface",\n        "pi"',
+        '"--host-surface",\n        "generic_cli"',
+        '"--scheduler-owner",\n        "agent_cli_loop"',
+        '"--execution-mode",\n        "interactive"',
         '"--delivery-workspace-path"',
         '"--vision-state"',
         '"--vision-acceptance"',
