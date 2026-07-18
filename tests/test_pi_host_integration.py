@@ -33,7 +33,8 @@ def test_pi_extension_covers_loopx_027_writeback_guards() -> None:
     source = (PI_PACKAGE / "extensions" / "loopx.ts").read_text(encoding="utf-8")
 
     for required_fragment in (
-        '"--host-surface",\n        "pi"',
+        '"--host-surface",\n    "pi"',
+        '"bootstrap-command-pack"',
         '"--host-surface",\n        "generic_cli"',
         '"--scheduler-owner",\n        "agent_cli_loop"',
         '"--execution-mode",\n        "interactive"',

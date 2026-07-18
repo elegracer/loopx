@@ -9,6 +9,7 @@ from typing import Any
 
 from loopx.bootstrap_command_pack import (
     GUIDED_COMMAND_PACK_PROJECTION_SCHEMA_VERSION,
+    build_loopx_bootstrap_command_pack,
     build_start_goal_guided_packet,
 )
 from loopx.cli import main as cli_main
@@ -315,6 +316,31 @@ def test_cli_without_host_returns_read_only_host_selection_gate(
     ]
     ide = next(choice for choice in choices if choice["host_surface"] == "codex-ide-plugin")
     assert "--host-surface codex-ide-plugin" in ide["rerun_command"]
+
+
+def test_pi_bare_loopx_packet_is_a_read_only_connection_preview(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "unconnected-project"
+    project.mkdir()
+
+    packet = build_loopx_bootstrap_command_pack(
+        project=project,
+        goal_id=None,
+        agent_id="pi-main",
+        cli_bin="loopx",
+        host_surface="pi",
+    )
+
+    assert packet["read_only"] is True
+    assert packet["goal_text"] is None
+    assert packet["project_connection"]["connection_state"] == "not_connected"
+    assert packet["recommended_next_step"]["kind"] == (
+        "confirm_before_bootstrap_mutation"
+    )
+    assert packet["recommended_next_step"]["requires_user_confirmation"] is True
+    assert "--dry-run" in packet["recommended_next_step"]["dry_run_command"]
+    assert list(project.iterdir()) == []
 
 
 def test_codex_ide_plugin_uses_visible_goal_and_preserves_compact_parity(

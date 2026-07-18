@@ -48,7 +48,9 @@ const controlParameters = Type.Object({
   action: StringEnum(ACTIONS),
   project: Type.Optional(Type.String({ description: "Project directory; defaults to pi's current directory" })),
   goalId: Type.Optional(Type.String({ description: "Stable LoopX goal id" })),
-  goalText: Type.Optional(Type.String({ description: "Exact long-running goal text" })),
+  goalText: Type.Optional(
+    Type.String({ description: "Exact long-running goal text; omit for a bare /loopx guided connection preview" }),
+  ),
   agentId: Type.Optional(Type.String({ description: `Registered agent id; defaults to ${DEFAULT_AGENT_ID}` })),
   todoId: Type.Optional(Type.String({ description: "Structured LoopX todo id" })),
   text: Type.Optional(Type.String({ description: "Public-safe todo text" })),
@@ -378,24 +380,38 @@ function buildArgs(
       args = ["--format", "json", "status", "--limit", limit];
       if (goalId) args.push("--goal-id", goalId, "--agent-id", agentId);
       break;
-    case "start_goal":
-      args = [
-        "--format",
-        "json",
-        "start-goal",
-        "--guided",
-        "--project",
-        project,
-        "--host-surface",
-        "pi",
-        "--agent-id",
-        agentId,
-        "--goal-text",
-        required(params.goalText, "goalText"),
-      ];
+    case "start_goal": {
+      const goalText = params.goalText?.trim();
+      args = goalText
+        ? [
+            "--format",
+            "json",
+            "start-goal",
+            "--guided",
+            "--project",
+            project,
+            "--host-surface",
+            "pi",
+            "--agent-id",
+            agentId,
+            "--goal-text",
+            goalText,
+          ]
+        : [
+            "--format",
+            "json",
+            "bootstrap-command-pack",
+            "--project",
+            project,
+            "--host-surface",
+            "pi",
+            "--agent-id",
+            agentId,
+          ];
       if (goalId) args.push("--goal-id", goalId);
       addCapabilities(args);
       break;
+    }
     case "connect":
       args = [
         "--format",
@@ -1111,7 +1127,7 @@ export default function loopxPiAdapter(pi: ExtensionAPI) {
 
       const request = goalText
         ? `Start or continue this LoopX goal in the current project: ${goalText}\n\nThis /loopx invocation is explicit user intent to create or reuse local LoopX state and activates visible session continuation for that goal. Load the loopx-pi skill, use loopx_control start_goal first, connect only if needed, create a concise ranked todo plan without duplicates, then run the first quota-allowed bounded segment. Stop after that segment; the pi host controller will select any later turn after agent_settled. Do not install a background scheduler.`
-        : "Inspect the current project's LoopX state in read-only mode. Load the loopx-pi skill, use loopx_control status, and report the active goal, user gate, top runnable agent todo, and next safe action. Do not mutate state.";
+        : "Inspect the current project's LoopX state in read-only mode. Load the loopx-pi skill and use loopx_control status first. If the project has a connected goal, report the active goal, user gate, top runnable agent todo, and next safe action. If no goal is connected, call loopx_control start_goal without goalText to obtain the canonical guided connection preview, show its dry-run next step, and ask before any mutation. Do not connect, add todos, activate continuation, or spend quota.";
       pi.sendUserMessage(request);
     },
   });

@@ -36,8 +36,10 @@ or custom-agent integrations.
 - LoopX 0.2.7+ on `PATH`
 - Python 3.11+
 
-The adapter has two visible execution modes:
+The adapter preserves the canonical LoopX entry behavior:
 
+- Bare `/loopx` inspects connected state or returns a guided connection preview
+  without mutation.
 - `/loopx <goal>` starts or reuses a goal and automatically arms persistent
   continuation for that goal after the setup turn settles. The default budget
   is 20 dispatched turns.

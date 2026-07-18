@@ -37,16 +37,18 @@ The canonical LoopX agent type is `pi`, with aliases `pi-cli` and
 `pi coding agent`. Its host activation surface is
 `pi_session_persistent_multi_goal_turns`:
 
-1. `/loopx <goal>` creates or reuses local LoopX state and a ranked todo
+1. Bare `/loopx` inspects connected state. When no goal is connected, it returns
+   the canonical guided connection preview and asks before mutation.
+2. `/loopx <goal>` creates or reuses local LoopX state and a ranked todo
    frontier, then automatically arms visible continuation for that goal after
    the setup turn settles.
-2. `/loopx-turn` runs exactly one manually requested quota-gated segment.
-3. `/loopx-auto start [goal-id ...] [--max-turns N]` explicitly replaces the
+3. `/loopx-turn` runs exactly one manually requested quota-gated segment.
+4. `/loopx-auto start [goal-id ...] [--max-turns N]` explicitly replaces the
    active goal scope or turn budget. With no goal ids, all goals in the current
    project registry are candidates.
-4. `/loopx-auto status|resume|tick|stop` controls that session loop.
-5. `/loopx-status` refreshes a compact read-only status widget.
-6. `loopx_control` exposes allow-listed structured CLI actions. Mutations remain
+5. `/loopx-auto status|resume|tick|stop` controls that session loop.
+6. `/loopx-status` refreshes a compact read-only status widget.
+7. `loopx_control` exposes allow-listed structured CLI actions. Mutations remain
    previews unless `execute=true` is explicit.
 
 The core `loopx turn select` command collects each goal's canonical Turn plan,

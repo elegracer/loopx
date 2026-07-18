@@ -45,9 +45,10 @@ LoopX 0.2.7 binds accountable delivery to the Git checkout that produced it.
 For `/loopx` without a goal:
 
 1. Call `loopx_control` with `action=status` and no mutation.
-2. If status is contradictory or unhealthy, call `diagnose` for the selected goal.
-3. Report the active goal, current user gate, highest-priority runnable agent todo, owner/claim, and exactly one next safe action.
-4. Do not connect a project, add todos, refresh state, or spend quota.
+2. If a goal is connected, report the active goal, current user gate, highest-priority runnable agent todo, owner/claim, and exactly one next safe action.
+3. If no goal is connected, call `start_goal` without `goalText` to obtain the canonical guided connection preview. Show its dry-run next step and ask before any mutation.
+4. If connected status is contradictory or unhealthy, call `diagnose` for the selected goal.
+5. Do not connect a project, add todos, activate continuation, refresh state, or spend quota.
 
 ## Start Or Continue A Goal
 
