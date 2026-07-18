@@ -27,6 +27,8 @@ def _surface_install_command(agent_type: str, cli_bin: str) -> str | None:
         return f"{shell_arg(cli_bin)} slash-commands --install --surface codex"
     if agent_type == "claude-code":
         return f"{shell_arg(cli_bin)} slash-commands --install --surface claude-code"
+    if agent_type == "pi":
+        return "loopx-pi-install"
     return None
 
 
@@ -45,6 +47,7 @@ def _bootstrap_pack_command(
         "codex-ide-plugin": "codex-ide-plugin",
         "codex-cli": "codex-cli-tui",
         "claude-code": "claude-code",
+        "pi": "pi",
         "manual": "shell",
         "other-agent": "worker-bridge",
     }
@@ -76,6 +79,8 @@ def _start_instruction(agent_type: str) -> str:
         return "Use `$loopx <task>` or select the LoopX skill from `/skills`; after todos are written, set `/goal <task_body>` in the visible TUI."
     if agent_type == "claude-code":
         return "Run `/loopx <task>` to arm LoopX, then run native `/loop`."
+    if agent_type == "pi":
+        return "Run `/loopx <task>`, then use `/loopx-turn` for one visible quota-gated bounded segment at a time."
     if agent_type == "manual":
         return "Use the CLI packet and wire an external scheduler, or run quota/status/todo commands manually."
     return "Use the host's explicit LoopX command facade such as `@loopx <task>` or `$loopx <task>`, then wire its scheduler through this packet."

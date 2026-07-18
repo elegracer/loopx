@@ -39,6 +39,7 @@ SUPPORTED_AGENT_TYPES = [
     "codex-ide-plugin",
     "codex-cli",
     "claude-code",
+    "pi",
     "manual",
     "other-agent",
 ]
@@ -87,6 +88,12 @@ AGENT_TYPE_CATALOG: dict[str, dict[str, Any]] = {
         "host_loop": "native /loop gated by LoopX",
         "entry": "/loopx <task> then /loop",
         "accepted_inputs": ["claude-code", "claude_code", "claude code", "cc"],
+    },
+    "pi": {
+        "display_name": "pi coding agent",
+        "host_loop": "interactive quota-gated /loopx-turn",
+        "entry": "/loopx <task> then /loopx-turn",
+        "accepted_inputs": ["pi", "pi-cli", "pi coding agent"],
     },
     "manual": {
         "display_name": "Manual shell / external scheduler",
@@ -147,6 +154,7 @@ HOST_SURFACE_TO_AGENT_TYPE = {
     "codex-ide": "codex-ide-plugin",
     "codex-cli-tui": "codex-cli",
     "claude-code": "claude-code",
+    "pi": "pi",
     "shell": "manual",
     "http": "other-agent",
     "worker-bridge": "other-agent",
@@ -269,6 +277,7 @@ def _heartbeat_commands(
         "codex-ide-plugin": "Codex IDE plugin /goal visible task loop",
         "codex-cli": "Codex CLI /goal visible TUI loop",
         "claude-code": "Claude Code native /loop gated by LoopX",
+        "pi": "pi interactive quota-gated bounded turns",
         "manual": "External scheduler or manual shell LoopX poll",
         "other-agent": "Custom agent host loop gated by LoopX",
     }
@@ -463,6 +472,37 @@ def _claude_code_activation(commands: dict[str, str], cli_bin: str) -> dict[str,
     }
 
 
+def _pi_activation() -> dict[str, Any]:
+    return {
+        "host_surface": "pi_interactive_bounded_turns",
+        "entry_command_hint": "/loopx <task> then /loopx-turn",
+        "activation_method": "run_pi_quota_gated_bounded_turns",
+        "activation_input_command": "/loopx-turn",
+        "setup_command": "loopx-pi-install",
+        "host_mutation": {
+            "owner": "pi interactive CLI",
+            "host_command": "/loopx-turn",
+            "cli_can_mutate_directly": False,
+            "missing_host_tool_gate": (
+                "The LoopX pi package is unavailable; install integrations/pi, "
+                "reload pi, and report that concrete gate instead of falling back "
+                "to another agent's host loop."
+            ),
+        },
+        "activation_steps": [
+            "Install or refresh the opt-in LoopX pi package and reload pi.",
+            "Run `/loopx <task>` to create or reuse the goal and ranked todos.",
+            "Run `/loopx-turn` for one visible quota-gated bounded segment at a time.",
+            "Keep scheduling manual; the pi integration does not install a background loop.",
+        ],
+        "success_criteria": [
+            "pi exposes /loopx, /loopx-turn, /loopx-status, and loopx_control.",
+            "Each delivery turn starts from LoopX status and quota, validates work, writes state, then spends at most one slot.",
+            "No scheduler, timer, or unrelated agent integration is installed or changed.",
+        ],
+    }
+
+
 def _manual_activation(commands: dict[str, str]) -> dict[str, Any]:
     return {
         "host_surface": "external_scheduler_or_manual_shell",
@@ -527,6 +567,8 @@ def build_host_loop_activation_packet(
         surface = _codex_cli_activation(commands)
     elif canonical == "claude-code":
         surface = _claude_code_activation(commands, cli_bin)
+    elif canonical == "pi":
+        surface = _pi_activation()
     else:
         surface = _manual_activation(commands)
         if canonical == "other-agent":
