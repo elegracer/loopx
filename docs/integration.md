@@ -37,10 +37,13 @@ loopx-pi-install
 Contributors can run `scripts/install-pi-package.sh` directly from a checkout.
 
 Reload an already open pi session with `/reload`. The package exposes `/loopx`,
-`/loopx-turn`, `/loopx-status`, and the structured `loopx_control` tool. pi is
-modeled as an interactive host: every `/loopx-turn` performs at most one
-quota-gated segment, and the package does not install a timer, heartbeat
-automation, or background scheduler.
+`/loopx-turn`, `/loopx-auto`, `/loopx-status`, and the structured
+`loopx_control` tool. Pi is modeled as a visible interactive host:
+`/loopx-turn` performs one manual quota-gated segment, while explicit
+`/loopx-auto start [goal-id ...]` runs a bounded, session-persistent multi-goal
+controller. Its LoopX-cadence timer exists only inside the visible Pi process;
+the package installs no daemon, cron job, detached worker, or external heartbeat
+automation.
 
 The integration is additive. Installing LoopX normally does not install the pi
 package, and installing the pi package does not modify Codex App, Codex IDE,

@@ -91,8 +91,8 @@ AGENT_TYPE_CATALOG: dict[str, dict[str, Any]] = {
     },
     "pi": {
         "display_name": "pi coding agent",
-        "host_loop": "interactive quota-gated /loopx-turn",
-        "entry": "/loopx <task> then /loopx-turn",
+        "host_loop": "visible session-persistent multi-goal LoopX controller",
+        "entry": "/loopx <task> then /loopx-auto start <goal-id>",
         "accepted_inputs": ["pi", "pi-cli", "pi coding agent"],
     },
     "manual": {
@@ -277,7 +277,7 @@ def _heartbeat_commands(
         "codex-ide-plugin": "Codex IDE plugin /goal visible task loop",
         "codex-cli": "Codex CLI /goal visible TUI loop",
         "claude-code": "Claude Code native /loop gated by LoopX",
-        "pi": "pi interactive quota-gated bounded turns",
+        "pi": "pi visible session-persistent quota-gated turns",
         "manual": "External scheduler or manual shell LoopX poll",
         "other-agent": "Custom agent host loop gated by LoopX",
     }
@@ -472,16 +472,18 @@ def _claude_code_activation(commands: dict[str, str], cli_bin: str) -> dict[str,
     }
 
 
-def _pi_activation() -> dict[str, Any]:
+def _pi_activation(goal_id: str) -> dict[str, Any]:
+    auto_command = f"/loopx-auto start {goal_id}"
     return {
-        "host_surface": "pi_interactive_bounded_turns",
-        "entry_command_hint": "/loopx <task> then /loopx-turn",
-        "activation_method": "run_pi_quota_gated_bounded_turns",
-        "activation_input_command": "/loopx-turn",
+        "host_surface": "pi_session_persistent_multi_goal_turns",
+        "entry_command_hint": f"/loopx <task> then {auto_command}",
+        "activation_method": "run_pi_session_persistent_multi_goal_controller",
+        "activation_input_command": auto_command,
         "setup_command": "loopx-pi-install",
         "host_mutation": {
             "owner": "pi interactive CLI",
-            "host_command": "/loopx-turn",
+            "host_command": auto_command,
+            "manual_host_command": "/loopx-turn",
             "cli_can_mutate_directly": False,
             "missing_host_tool_gate": (
                 "The LoopX pi package is unavailable; install integrations/pi, "
@@ -491,14 +493,16 @@ def _pi_activation() -> dict[str, Any]:
         },
         "activation_steps": [
             "Install or refresh the opt-in LoopX pi package and reload pi.",
+            "Complete one normal pi turn so the session file is durably established.",
             "Run `/loopx <task>` to create or reuse the goal and ranked todos.",
-            "Run `/loopx-turn` for one visible quota-gated bounded segment at a time.",
-            "Keep scheduling manual; the pi integration does not install a background loop.",
+            f"Run `{auto_command}`; add more goal ids to opt into fair multi-goal selection.",
+            "Keep the pi session visible; its in-process controller wakes only from LoopX cadence and stops with the session.",
         ],
         "success_criteria": [
-            "pi exposes /loopx, /loopx-turn, /loopx-status, and loopx_control.",
-            "Each delivery turn starts from LoopX status and quota, validates work, writes state, then spends at most one slot.",
-            "No scheduler, timer, or unrelated agent integration is installed or changed.",
+            "pi exposes /loopx, /loopx-turn, /loopx-auto, /loopx-status, and loopx_control.",
+            "Every dispatched turn is a current-workspace LoopX selection and consumes at most one validated quota slot.",
+            "Controller state survives pi session resume, while user gates, cross-workspace goals, manual input, and uncertain recovery pause fail closed.",
+            "No daemon, cron job, detached worker, or unrelated agent integration is installed or changed.",
         ],
     }
 
@@ -568,7 +572,7 @@ def build_host_loop_activation_packet(
     elif canonical == "claude-code":
         surface = _claude_code_activation(commands, cli_bin)
     elif canonical == "pi":
-        surface = _pi_activation()
+        surface = _pi_activation(goal_id)
     else:
         surface = _manual_activation(commands)
         if canonical == "other-agent":

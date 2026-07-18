@@ -352,7 +352,7 @@ def test_codex_ide_plugin_uses_visible_goal_and_preserves_compact_parity(
     )
 
 
-def test_pi_guided_packet_keeps_scheduler_steps_out_of_interactive_turns(
+def test_pi_guided_packet_keeps_scheduler_ack_out_of_visible_turns(
     tmp_path: Path,
 ) -> None:
     project = _write_connected_project(tmp_path)
@@ -370,8 +370,12 @@ def test_pi_guided_packet_keeps_scheduler_steps_out_of_interactive_turns(
     codex_packet = build_start_goal_guided_packet(host_surface="codex-app", **common)
 
     activation = pi_packet["command_pack"]["host_loop_activation"]
-    assert activation["host_surface"] == "pi_interactive_bounded_turns"
-    assert activation["activation_input_command"] == "/loopx-turn"
+    assert activation["host_surface"] == (
+        "pi_session_persistent_multi_goal_turns"
+    )
+    assert activation["activation_input_command"] == (
+        f"/loopx-auto start {GOAL_ID}"
+    )
     assert (
         pi_packet["command_pack"]["goal_start_contract"]["activation"][
             "begin_automation_when_quota_allows"
@@ -390,4 +394,5 @@ def test_pi_guided_packet_keeps_scheduler_steps_out_of_interactive_turns(
         for step in pi_packet["guided_transaction"]["ordered_steps"]
         if step["id"] == "quota_guard"
     )
-    assert "does not apply scheduler hints" in quota_step["purpose"]
+    assert "never applies scheduler acknowledgements" in quota_step["purpose"]
+    assert "read-only LoopX cadence" in quota_step["purpose"]

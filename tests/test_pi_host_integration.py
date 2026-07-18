@@ -48,6 +48,46 @@ def test_pi_extension_covers_loopx_027_writeback_guards() -> None:
     assert "scheduler-ack" not in source
 
 
+def test_pi_extension_exposes_fail_closed_persistent_multi_goal_continuation() -> None:
+    source = (PI_PACKAGE / "extensions" / "loopx.ts").read_text(encoding="utf-8")
+
+    for required_fragment in (
+        'const AUTO_STATE_ENTRY = "loopx-pi-auto-state"',
+        'pi.registerCommand("loopx-auto"',
+        'join(state.project, ".loopx", "registry.json")',
+        '"turn",\n    "select"',
+        '"--scheduler-owner",\n    "agent_cli_loop"',
+        'pi.on("agent_settled"',
+        'pi.on("session_shutdown"',
+        'pi.on("input"',
+        "autoPlanAbort?.abort()",
+        "runAutoPlan(pi, autoState, planAbort.signal)",
+        "pi.appendEntry<AutoState>(AUTO_STATE_ENTRY",
+        "ctx.sessionManager.getBranch()",
+        "ctx.sessionManager.getSessionFile()",
+        'return ctx.mode === "tui" || ctx.mode === "rpc"',
+        "auto continuation is disabled outside TUI/RPC mode",
+        'workspace_disposition !== "current_session"',
+        'disposition === "requires_isolated_session"',
+        'disposition === "user_action_required"',
+        'disposition === "terminal_stop"',
+        "effects.host_invoked !== false",
+        "boundary.read_only !== true",
+        "boundary.cross_workspace_execution_allowed !== false",
+        "pi.sendUserMessage(buildAutoTurnPrompt",
+        "autoState.dispatchedTurnKeysByGoal[goalId] === turnKey",
+        "refusing duplicate dispatch",
+        'previousPhase === "waiting" && previousPlanId === planId',
+        "Number.isFinite(Date.parse(raw.nextWakeAt))",
+        "Complete one normal Pi turn before /loopx-auto start",
+    ):
+        assert required_fragment in source
+
+    assert "setInterval(" not in source
+    assert "child_process" not in source
+    assert "outer_controller" not in source
+
+
 def test_pi_installer_is_explicit_and_has_a_non_mutating_preview() -> None:
     installer = REPO_ROOT / "scripts" / "install-pi-package.sh"
     result = subprocess.run(

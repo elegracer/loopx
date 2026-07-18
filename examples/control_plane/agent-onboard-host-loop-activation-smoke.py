@@ -69,8 +69,11 @@ def main() -> int:
     assert codex_ide["host_mutation"]["host_command"] == "/goal <task_body>", codex_ide
     assert codex_cli["host_mutation"]["host_command"] == "/goal <task_body>", codex_cli
     assert claude_code["host_mutation"]["host_command"] == "/loop", claude_code
-    assert pi["host_mutation"]["host_command"] == "/loopx-turn", pi
-    assert pi["activation_method"] == "run_pi_quota_gated_bounded_turns", pi
+    assert pi["host_mutation"]["host_command"] == "/loopx-auto start demo", pi
+    assert pi["host_mutation"]["manual_host_command"] == "/loopx-turn", pi
+    assert pi["activation_method"] == (
+        "run_pi_session_persistent_multi_goal_controller"
+    ), pi
 
     pi_onboarding = build_agent_onboarding_packet(
         project=REPO_ROOT,

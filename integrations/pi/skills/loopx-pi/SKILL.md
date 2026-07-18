@@ -10,7 +10,8 @@ LoopX is the deterministic local control plane. Pi is the interactive executor. 
 
 - LoopX owns durable goal, gate, todo, quota, evidence, and handoff state.
 - Pi performs one bounded work segment using its normal read/bash/edit/write tools.
-- This adapter is a manual interactive loop driver. It does not install timers, heartbeat automation, or a hidden background process.
+- `/loopx-turn` is manual. `/loopx-auto start` explicitly opts the visible Pi session into persistent multi-goal continuation.
+- Auto mode uses only a session-scoped timer derived from LoopX cadence. It never installs a daemon, cron job, detached worker, or external heartbeat automation.
 
 Use `loopx_control` for supported operations. Do not construct raw `loopx` shell commands unless the structured tool lacks the required action.
 
@@ -21,6 +22,7 @@ Treat pi as an external interactive CLI host:
 - start-goal host surface: `pi`
 - typed turn-plan host: `generic-cli`
 - execution mode: `interactive-visible`
+- scheduler owner: `agent_cli_loop`
 - LoopX 0.2.7 quota calls use the goal, agent, capabilities, and bounded turn envelope
 - default registered agent: `pi-main` (override with `LOOPX_PI_AGENT_ID`)
 - available capabilities: `shell`, `filesystem`, `filesystem_write`
@@ -48,7 +50,7 @@ For `/loopx` without a goal:
 
 ## Start Or Continue A Goal
 
-`/loopx <goal text>` is explicit user intent to create or reuse local LoopX state for that goal. It is not permission for external writes, publishing, production actions, destructive git, or background scheduling.
+`/loopx <goal text>` is explicit user intent to create or reuse local LoopX state for that goal. It is not permission for external writes, publishing, production actions, destructive git, or persistent continuation. Only `/loopx-auto start` opts the current Pi session into continuation.
 
 1. Call `start_goal` with the exact goal text. Read `project_connection` and `recommended_next_step`.
 2. If already connected, reuse the existing goal and todos. Never force bootstrap or replace state. Check `registered_agents`; when `pi-main` is absent, preview then execute `register_agent` for the existing goal before claiming work.
@@ -74,9 +76,28 @@ Use this workflow for `/loopx-turn` and for the first segment after starting a g
 7. On validated progress, preview and execute `todo_complete` with compact public-safe evidence and either a concrete successor (`nextAgentTodo`) or `noFollowUp=true`.
 8. Preview and execute `refresh_state`. Set a truthful classification, delivery scale, delivery outcome, next action, delivery workspace, and required agent vision checkpoint.
 9. Only after validated work and state writeback, preview then execute `spend_slot` once from the accountable delivery workspace.
-10. Stop after this segment. Do not trigger another pi turn automatically.
+10. Stop after this segment. Do not schedule, inject, or recursively trigger another Pi turn. In auto mode, only the host controller may select the next goal after `agent_settled`.
 
 If work fails or remains incomplete, do not falsely complete the todo or spend quota. Record a truthful refresh classification/outcome when supported, and report the blocker.
+
+## Persistent Multi-Goal Mode
+
+`/loopx-auto start [goal-id ...] [--max-turns N]` is explicit user permission for bounded continuation in the current visible Pi session. The default budget is 20 dispatched turns and the hard maximum is 100. Omit goal ids to consider every goal in the current project registry.
+
+Before starting, complete one normal Pi turn. Pi only flushes custom session entries durably after an assistant message exists, and the adapter refuses an empty-session start rather than claiming persistence it cannot guarantee.
+
+The controller must preserve these boundaries:
+
+1. Call the read-only `loopx turn select` command with scheduler owner `agent_cli_loop`, the persisted fairness cursor, and the user-selected goal set.
+2. Dispatch only `run_current_session` and exactly one selected Turn. Re-read goal-scoped status and `turn_plan` inside the Turn before claiming work because the dispatch snapshot may be stale.
+3. Persist the goal set, turn budget, cursor, plan id, turn key, and LoopX-derived next wake in Pi custom session entries.
+4. Continue only after `agent_settled`. The agent itself never owns continuation.
+5. Pause on manual input, user action, contract error, uncertain restart/fork/tree state, exhausted budget, `requires_isolated_session`, or a repeated per-goal turn key showing no governed state progress.
+6. On `wait`, use only `wake_after_seconds` from LoopX. Do not invent a polling rate.
+7. Stop only when every selected goal is terminal, represented by `terminal_stop`.
+8. Clear timers on session shutdown. Never continue in a detached process or execute a goal in the wrong working directory.
+
+Use `/loopx-auto status` to inspect state, `stop` to disable it, `resume` after resolving a pause, and `tick` for an explicit immediate re-plan. A cross-workspace goal needs a separate Pi session opened in its canonical project.
 
 ## Write Safety
 

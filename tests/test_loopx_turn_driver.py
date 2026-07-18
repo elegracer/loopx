@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from loopx.cli import main as cli_main
+from loopx.cli_commands.turn import _scheduler_wait_seconds
 from loopx.control_plane.turn_driver import (
     LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
     LoopXTurnRoute,
@@ -372,6 +373,148 @@ def _write_live_fixture(root: Path) -> tuple[Path, Path, Path]:
         encoding="utf-8",
     )
     return project, runtime, registry
+
+
+def test_turn_select_wait_uses_only_loopx_scheduler_cadence() -> None:
+    waiting = {
+        "scheduler_hint": {
+            "action": "backoff_until_state_change",
+            "cold_path_detail": {
+                "local_scheduler": {"recommended_interval_minutes": "2.5"}
+            },
+        }
+    }
+    terminal = {
+        "scheduler_hint": {
+            "action": "stop_until_explicit_resume",
+            "cold_path_detail": {
+                "local_scheduler": {"recommended_interval_minutes": 1}
+            },
+        }
+    }
+
+    assert _scheduler_wait_seconds(waiting) == 150
+    assert _scheduler_wait_seconds(terminal) is None
+    assert _scheduler_wait_seconds({}) is None
+
+
+def test_turn_select_uses_live_multi_goal_quota_and_fairness_cursor(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    second_goal_id = "loopx-turn-second"
+    second_state = (
+        project / ".codex" / "goals" / second_goal_id / "ACTIVE_GOAL_STATE.md"
+    )
+    second_state.parent.mkdir(parents=True)
+    second_state.write_text(
+        "\n".join(
+            [
+                "---",
+                "status: active",
+                "updated_at: 2026-01-01T00:00:00+00:00",
+                "---",
+                "",
+                "# Second LoopX Turn Fixture",
+                "",
+                "## Agent Todo",
+                "",
+                "- [ ] [P0] Advance the second public fixture.",
+                "  <!-- loopx:todo todo_id=todo_fixture0002 status=open task_class=advancement_task action_kind=fixture claimed_by=codex-fixture priority=P0 -->",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    registry_payload = json.loads(registry.read_text(encoding="utf-8"))
+    registry_payload["goals"].append(
+        {
+            "id": second_goal_id,
+            "domain": "loopx-turn-second-public-fixture",
+            "status": "active",
+            "repo": str(project),
+            "state_file": str(second_state.relative_to(project)),
+            "adapter": {"kind": "fixture_v0", "status": "connected-delivery"},
+            "quota": {"compute": 1.0, "window_hours": 24},
+            "coordination": {
+                "agent_model": "peer_v1",
+                "registered_agents": ["codex-fixture"],
+                "write_scope": ["docs/**"],
+            },
+        }
+    )
+    registry.write_text(json.dumps(registry_payload, indent=2) + "\n", encoding="utf-8")
+
+    def select(*extra: str) -> dict:
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            exit_code = cli_main(
+                [
+                    "--registry",
+                    str(registry),
+                    "--runtime-root",
+                    str(runtime),
+                    "--format",
+                    "json",
+                    "turn",
+                    "select",
+                    "--project",
+                    str(project),
+                    "--agent-id",
+                    "codex-fixture",
+                    "--available-capability",
+                    "shell",
+                    "--available-capability",
+                    "filesystem_write",
+                    "--scan-root",
+                    str(project),
+                    *extra,
+                ]
+            )
+        payload = json.loads(output.getvalue())
+        assert exit_code == 0, payload
+        return payload
+
+    first = select()
+    second = select("--after-goal-id", "loopx-turn-fixture")
+
+    assert first["goal_count"] == 2
+    assert first["selection"]["disposition"] == "run_current_session"
+    assert first["selection"]["selected"]["goal_id"] == "loopx-turn-fixture"
+    assert first["selection"]["selected"]["turn_key"].startswith("sha256:")
+    assert second["selection"]["selection_order"] == [
+        second_goal_id,
+        "loopx-turn-fixture",
+    ]
+    assert second["selection"]["selected"]["goal_id"] == second_goal_id
+    assert all(
+        candidate["workspace_disposition"] == "current_session"
+        for candidate in second["candidates"]
+    )
+    assert all(value is False for value in second["effects"].values())
+
+    isolated_project = tmp_path / "isolated-project"
+    isolated_state = (
+        isolated_project / ".codex" / "goals" / second_goal_id / "ACTIVE_GOAL_STATE.md"
+    )
+    isolated_state.parent.mkdir(parents=True)
+    isolated_state.write_text(
+        second_state.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    registry_payload["goals"][1]["repo"] = str(isolated_project)
+    registry.write_text(
+        json.dumps(registry_payload, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    isolated = select("--goal-id", second_goal_id)
+
+    assert isolated["selection"]["disposition"] == "requires_isolated_session"
+    assert isolated["selection"]["selected"]["goal_id"] == second_goal_id
+    assert isolated["selection"]["selected"]["workspace_disposition"] == (
+        "requires_isolated_session"
+    )
+    assert isolated["effects"]["host_invoked"] is False
 
 
 def test_quota_cli_projects_outer_controller_without_codex_app_action(

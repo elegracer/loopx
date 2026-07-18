@@ -5,6 +5,12 @@ from .driver import (
     LoopXTurnRoute,
     build_loopx_turn_plan,
 )
+from .multi_goal import (
+    CURRENT_SESSION,
+    LOOPX_MULTI_GOAL_TURN_PLAN_SCHEMA_VERSION,
+    REQUIRES_ISOLATED_SESSION,
+    build_multi_goal_turn_plan,
+)
 from .codex_cli import (
     CODEX_CLI_SESSION_SCHEMA_VERSION,
     codex_cli_result_schema,
@@ -40,9 +46,13 @@ __all__ = [
     "LOOPX_TURN_EXECUTION_SCHEMA_VERSION",
     "LOOPX_TURN_HOST_REQUEST_SCHEMA_VERSION",
     "LOOPX_TURN_TASK_VALIDATION_SCHEMA_VERSION",
+    "LOOPX_MULTI_GOAL_TURN_PLAN_SCHEMA_VERSION",
+    "CURRENT_SESSION",
+    "REQUIRES_ISOLATED_SESSION",
     "LoopXTurnRoute",
     "LoopXTurnResultKind",
     "build_loopx_turn_plan",
+    "build_multi_goal_turn_plan",
     "build_loopx_turn_host_request",
     "build_loopx_turn_command_validator",
     "build_loopx_turn_transaction_plan",

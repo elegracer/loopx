@@ -6,10 +6,14 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ..control_plane.turn_driver import (
+    CURRENT_SESSION,
+    LOOPX_MULTI_GOAL_TURN_PLAN_SCHEMA_VERSION,
     LOOPX_TURN_EXECUTION_SCHEMA_VERSION,
     LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
+    REQUIRES_ISOLATED_SESSION,
     build_loopx_turn_command_validator,
     build_loopx_turn_plan,
+    build_multi_goal_turn_plan,
     codex_cli_session_binding,
     load_loopx_turn_plan_from_journal,
     run_codex_cli_host,
@@ -20,10 +24,13 @@ from ..control_plane.scheduler.execution_context import (
 )
 from ..control_plane.quota.live_decision import build_live_quota_should_run_decision
 from ..control_plane.quota.turn_envelope import build_turn_envelope
+from ..control_plane.runtime.goal_project_route import resolve_goal_project_route
 from ..control_plane.runtime.status_projection_cache import (
     resolve_status_projection_cache_runtime_root,
 )
+from ..history import load_registry
 from ..quota import spend_quota_slot
+from ..registry import registry_goals
 from ..state_refresh import refresh_state_run
 from ..status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, collect_status
 from ..todos import update_goal_todo
@@ -74,6 +81,56 @@ def register_turn_commands(
         help="Specific public file or directory to scan. Repeatable.",
     )
     plan.add_argument("--limit", type=int, default=5)
+
+    select = command_sub.add_parser(
+        "select",
+        help=(
+            "Select at most one governed current-session Turn across multiple goals "
+            "without launching or writing."
+        ),
+    )
+    add_subcommand_format(select)
+    select.add_argument(
+        "--project", default=".", help="Current host session workspace."
+    )
+    select.add_argument(
+        "--goal-id",
+        dest="goal_ids",
+        action="append",
+        help="Candidate goal id. Repeat to constrain and order the candidate set.",
+    )
+    select.add_argument("--agent-id", required=True)
+    select.add_argument(
+        "--after-goal-id",
+        help="Fairness cursor: begin selection after this previously dispatched goal.",
+    )
+    select.add_argument(
+        "--host",
+        choices=["codex-cli", "claude-code", "generic-cli"],
+        default="generic-cli",
+    )
+    select.add_argument(
+        "--execution-mode",
+        choices=["interactive-visible", "isolated-headless"],
+        default="interactive-visible",
+    )
+    select.add_argument(
+        "--scheduler-owner",
+        choices=["host_automation", "agent_cli_loop", "outer_controller", "none"],
+        default="agent_cli_loop",
+    )
+    select.add_argument(
+        "--available-capability",
+        dest="available_capabilities",
+        action="append",
+    )
+    select.add_argument(
+        "--scan-root",
+        default=_default_public_scan_root(),
+        help="Public files to scan for obvious private material.",
+    )
+    select.add_argument("--scan-path", action="append", default=[])
+    select.add_argument("--limit", type=int, default=5)
 
     run_once = command_sub.add_parser(
         "run-once",
@@ -239,6 +296,169 @@ def _render_loopx_turn_plan_markdown(payload: dict[str, object]) -> str:
     )
 
 
+def _render_loopx_multi_goal_turn_plan_markdown(payload: dict[str, object]) -> str:
+    selection = (
+        payload.get("selection") if isinstance(payload.get("selection"), dict) else {}
+    )
+    selected = (
+        selection.get("selected") if isinstance(selection.get("selected"), dict) else {}
+    )
+    return "\n".join(
+        [
+            "# LoopX Multi-Goal Turn Plan",
+            f"- ok: {payload.get('ok')}",
+            f"- goals: {payload.get('goal_count')}",
+            f"- disposition: {selection.get('disposition')}",
+            f"- reason_code: {selection.get('reason_code')}",
+            f"- selected_goal: {selected.get('goal_id')}",
+            f"- wake_after_seconds: {selection.get('wake_after_seconds')}",
+            "- side_effects: none",
+        ]
+    )
+
+
+def _scheduler_wait_seconds(decision: dict[str, object]) -> int | None:
+    hint = (
+        decision.get("scheduler_hint")
+        if isinstance(decision.get("scheduler_hint"), dict)
+        else {}
+    )
+    if hint.get("action") == "stop_until_explicit_resume":
+        return None
+    detail = (
+        hint.get("cold_path_detail")
+        if isinstance(hint.get("cold_path_detail"), dict)
+        else {}
+    )
+    local_scheduler = (
+        detail.get("local_scheduler")
+        if isinstance(detail.get("local_scheduler"), dict)
+        else {}
+    )
+    value = local_scheduler.get("recommended_interval_minutes")
+    if isinstance(value, bool):
+        return None
+    try:
+        minutes = float(value)
+    except (TypeError, ValueError):
+        return None
+    if minutes <= 0:
+        return None
+    return max(1, int(minutes * 60))
+
+
+def _contract_error_turn_plan(goal_id: str, error: Exception) -> dict[str, object]:
+    return {
+        "ok": False,
+        "schema_version": "loopx_turn_plan_v0",
+        "mode": "plan",
+        "route": {
+            "schema_version": "loopx_turn_route_v0",
+            "kind": "contract_error",
+            "would_invoke_host": False,
+            "host_invocation_allowed": False,
+        },
+        "turn_envelope": {
+            "goal_id": goal_id,
+            "action": {},
+            "scheduler": {},
+        },
+        "transaction": {},
+        "effects": {
+            "host_invoked": False,
+            "state_written": False,
+            "scheduler_acknowledged": False,
+            "quota_spent": False,
+        },
+        "error": str(error),
+    }
+
+
+def _multi_goal_ids(
+    registry_path: Path,
+    requested_goal_ids: list[str] | None,
+) -> list[str]:
+    if requested_goal_ids:
+        return [str(goal_id or "").strip() for goal_id in requested_goal_ids]
+    registry = load_registry(registry_path)
+    return [
+        str(goal.get("id") or "").strip()
+        for goal in registry_goals(registry)
+        if str(goal.get("id") or "").strip()
+    ]
+
+
+def _build_live_multi_goal_turn_plan(
+    args: argparse.Namespace,
+    *,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+) -> dict[str, object]:
+    scan_roots = [Path(item).expanduser() for item in args.scan_path]
+    if not scan_roots:
+        scan_roots = [Path(args.scan_root).expanduser()]
+    runtime_root = resolve_status_projection_cache_runtime_root(
+        registry_path=registry_path,
+        runtime_root_override=runtime_root_arg,
+    )
+    status_payload = collect_status(
+        registry_path=registry_path,
+        runtime_root_override=runtime_root_arg,
+        scan_roots=scan_roots,
+        limit=max(max(0, args.limit), AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK),
+    )
+    scheduler_context = scheduler_execution_context_for_turn(
+        host=args.host,
+        execution_mode=args.execution_mode,
+        scheduler_owner=args.scheduler_owner,
+    )
+    current_project = Path(args.project).expanduser().resolve()
+    candidates: list[dict[str, object]] = []
+    for goal_id in _multi_goal_ids(registry_path, args.goal_ids):
+        workspace_disposition = CURRENT_SESSION
+        wait_after_seconds = None
+        try:
+            _, goal_project, _ = resolve_goal_project_route(
+                registry_path=registry_path,
+                goal_id=goal_id,
+            )
+            if goal_project != current_project:
+                workspace_disposition = REQUIRES_ISOLATED_SESSION
+            decision = build_live_quota_should_run_decision(
+                status_payload,
+                goal_id=goal_id,
+                agent_id=args.agent_id,
+                available_capabilities=args.available_capabilities,
+                include_scheduler_detail=True,
+                codex_app_current_rrule=None,
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+                route_source="loopx_multi_goal_turn_plan",
+                scheduler_execution_context=scheduler_context,
+            )
+            wait_after_seconds = _scheduler_wait_seconds(decision)
+            turn_plan = build_loopx_turn_plan(
+                build_turn_envelope(decision),
+                host=args.host,
+                execution_mode=args.execution_mode,
+                scheduler_owner=args.scheduler_owner,
+            )
+        except Exception as exc:
+            turn_plan = _contract_error_turn_plan(goal_id, exc)
+        candidates.append(
+            {
+                "goal_id": goal_id,
+                "workspace_disposition": workspace_disposition,
+                "wake_after_seconds": wait_after_seconds,
+                "turn_plan": turn_plan,
+            }
+        )
+    return build_multi_goal_turn_plan(
+        candidates,
+        after_goal_id=args.after_goal_id,
+    )
+
+
 def _render_loopx_turn_execution_markdown(payload: dict[str, object]) -> str:
     effects = payload.get("effects") if isinstance(payload.get("effects"), dict) else {}
     receipt = payload.get("receipt") if isinstance(payload.get("receipt"), dict) else {}
@@ -272,6 +492,37 @@ def handle_turn_command(
 ) -> int | None:
     if args.command != "turn":
         return None
+    if args.turn_command == "select":
+        try:
+            payload = _build_live_multi_goal_turn_plan(
+                args,
+                registry_path=registry_path,
+                runtime_root_arg=runtime_root_arg,
+            )
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "schema_version": LOOPX_MULTI_GOAL_TURN_PLAN_SCHEMA_VERSION,
+                "mode": "plan",
+                "goal_count": 0,
+                "selection": {
+                    "disposition": "contract_error",
+                    "reason_code": "multi_goal_plan_collection_failed",
+                },
+                "effects": {
+                    "host_invoked": False,
+                    "state_written": False,
+                    "scheduler_acknowledged": False,
+                    "quota_spent": False,
+                },
+                "error": str(exc),
+            }
+        print_payload(
+            payload,
+            output_format(args),
+            _render_loopx_multi_goal_turn_plan_markdown,
+        )
+        return 0 if payload.get("ok") else 1
     try:
         scan_roots = [Path(item).expanduser() for item in args.scan_path]
         if not scan_roots:

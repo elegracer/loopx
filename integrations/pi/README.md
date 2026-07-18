@@ -21,8 +21,8 @@ not change LoopX's Codex, Claude Code, manual, or custom-agent integrations.
 
 ## Resources
 
-- `extensions/loopx.ts`: `/loopx`, `/loopx-turn`, `/loopx-status`, and the
-  structured `loopx_control` tool.
+- `extensions/loopx.ts`: `/loopx`, `/loopx-turn`, `/loopx-auto`,
+  `/loopx-status`, and the structured `loopx_control` tool.
 - `skills/loopx-pi/SKILL.md`: pi-specific lifecycle, quota, todo, vision,
   writeback, and safety rules.
 
@@ -32,9 +32,27 @@ not change LoopX's Codex, Claude Code, manual, or custom-agent integrations.
 - LoopX 0.2.7+ on `PATH`
 - Python 3.11+
 
-The adapter is an interactive loop driver. It never installs a scheduler,
-timer, heartbeat automation, or hidden background process. Each `/loopx-turn`
-runs at most one quota-gated work segment.
+The adapter has two visible execution modes:
+
+- `/loopx-turn` runs one manually requested, quota-gated work segment.
+- `/loopx-auto start [goal-id ...] [--max-turns N]` opts the current pi session
+  into persistent multi-goal continuation. Omit goal ids to use all goals in the
+  current project registry. The default budget is 20 dispatched turns; the hard
+  maximum is 100.
+
+Auto mode persists its controller state in the pi session, uses LoopX's typed
+multi-goal plan and scheduler-derived cadence, and dispatches at most one
+current-workspace turn after `agent_settled`. A new empty pi session must first
+complete one normal turn so Pi has durably established its session file.
+`/loopx-auto status`, `resume`, `tick`, and `stop` inspect or control the loop.
+
+The adapter never installs a daemon, cron job, detached worker, or external
+heartbeat automation. Its timer exists only inside the visible pi process and
+is cleared on session shutdown. Manual input pauses it. User gates, uncertain
+resume/fork state, contract errors, an unchanged per-goal turn key after a
+dispatch, exhausted turn budget, and runnable goals in another workspace also
+pause it. Start a separate pi session in the canonical
+workspace for an isolated goal; the current session never executes it.
 
 For delivery in a repository other than the connected goal project, pass
 `deliveryWorkspace` to `refresh_state` and `spend_slot`. Material refreshes must

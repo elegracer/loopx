@@ -99,7 +99,7 @@ def test_ambiguous_codex_requires_app_ide_or_cli_selection() -> None:
     assert caught.value.suggestions == ["codex-app", "codex-ide-plugin", "codex-cli"]
 
 
-def test_pi_is_an_additive_interactive_host_without_a_scheduler() -> None:
+def test_pi_is_an_additive_visible_session_persistent_host() -> None:
     assert normalize_agent_type("pi coding agent") == "pi"
     assert agent_type_for_host_surface("pi") == "pi"
 
@@ -110,11 +110,20 @@ def test_pi_is_an_additive_interactive_host_without_a_scheduler() -> None:
         registered_agents=["pi-main"],
     )
 
-    assert packet["host_surface"] == "pi_interactive_bounded_turns"
-    assert packet["activation_method"] == "run_pi_quota_gated_bounded_turns"
-    assert packet["host_mutation"]["host_command"] == "/loopx-turn"
+    assert packet["host_surface"] == "pi_session_persistent_multi_goal_turns"
+    assert packet["activation_method"] == (
+        "run_pi_session_persistent_multi_goal_controller"
+    )
+    assert packet["activation_input_command"] == (
+        "/loopx-auto start fixture-goal"
+    )
+    assert packet["host_mutation"]["host_command"] == (
+        "/loopx-auto start fixture-goal"
+    )
+    assert packet["host_mutation"]["manual_host_command"] == "/loopx-turn"
     assert packet["setup_command"] == "loopx-pi-install"
-    assert "scheduler" in str(packet).lower()
+    assert "session" in str(packet).lower()
+    assert "daemon" in str(packet).lower()
 
 
 @pytest.mark.parametrize(
