@@ -49,6 +49,7 @@ def test_codex_ide_plugin_is_an_exact_host_type_with_visible_goal_activation() -
         ("codex-cli", "codex_cli"),
         ("codex-ide-plugin", "codex_cli"),
         ("claude-code", "claude_code"),
+        ("pi", "pi"),
     ),
 )
 def test_first_class_hosts_bind_one_runtime_profile(

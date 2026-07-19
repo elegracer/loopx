@@ -109,24 +109,52 @@ def test_pi_canonical_read_only_commands_run_the_cli_packet_first() -> None:
     assert "exec(LOOPX_BIN, rawArgs" not in source
 
 
+def test_pi_control_exposes_project_contract_check() -> None:
+    source = (PI_PACKAGE / "extensions" / "loopx.ts").read_text(encoding="utf-8")
+
+    assert '  "check",' in source
+    assert 'case "check":' in source
+    assert '["--format", "json", "check", "--scan-root", project, "--limit", limit]' in source
+
+
 def test_pi_extension_covers_loopx_027_writeback_guards() -> None:
     source = (PI_PACKAGE / "extensions" / "loopx.ts").read_text(encoding="utf-8")
 
     for required_fragment in (
         '"--host-surface",\n    "pi"',
         '"bootstrap-command-pack"',
-        '"--host-surface",\n        "generic_cli"',
-        '"--scheduler-owner",\n        "agent_cli_loop"',
-        '"--execution-mode",\n        "interactive"',
+        '"--runtime-profile",\n        "pi"',
+        '"--host",\n        "pi"',
+        '"--execution-mode",\n        "interactive-visible"',
         '"--delivery-workspace-path"',
+        '"--autonomous-replan-recorded"',
+        '"--repair-delta-kind"',
         '"--vision-state"',
         '"--vision-acceptance"',
+        '"--vision-dreaming-policy"',
         '"--vision-unchanged-reason"',
+        '"review-packet"',
+        '"--handoff-only"',
+        '"evidence-log"',
+        '"--thin"',
         '"--task-repository"',
         '["--registry", join(project, ".loopx", "registry.json")]',
         "cwd: plan.commandCwd",
     ):
         assert required_fragment in source
+
+    assert '"single_segment"' in source
+    assert '"bounded_segment"' in source
+
+    skill_source = (PI_PACKAGE / "skills" / "loopx-pi" / "SKILL.md").read_text(encoding="utf-8")
+    for scope_fragment in (
+        "## Structured Action Scope",
+        "Do not mirror every LoopX CLI family into this tool.",
+        "global manager views and PR review use their dedicated slash commands",
+        "release/update, registry retirement, global route replacement",
+        "Full Pi feature parity means the visible host can complete governed LoopX outcomes",
+    ):
+        assert scope_fragment in skill_source
 
     assert "automation_update" not in source
     assert "scheduler-ack" not in source
@@ -144,6 +172,7 @@ def test_pi_extension_exposes_fail_closed_persistent_multi_goal_continuation() -
         'driveAuto(ctx, "loopx_goal_setup_settled")',
         'join(state.project, ".loopx", "registry.json")',
         '"turn",\n    "select"',
+        '"--host",\n    "pi"',
         '"--scheduler-owner",\n    "agent_cli_loop"',
         'pi.on("agent_settled"',
         'pi.on("session_shutdown"',
@@ -163,8 +192,19 @@ def test_pi_extension_exposes_fail_closed_persistent_multi_goal_continuation() -
         "boundary.read_only !== true",
         "boundary.cross_workspace_execution_allowed !== false",
         "pi.sendUserMessage(buildAutoTurnPrompt",
+        "readGoalProgressMarker",
+        '"history"',
+        "dispatchedProgressMarkersByGoal",
+        "previousProgressMarker === progressMarker",
+        'const progressClassification = progressMarker.split("|")[1] || "no-runs"',
+        'ctx.ui.setStatus("loopx-pi", `LoopX | ${goalId} | ${progressClassification} | ${disposition}`)',
         "autoState.dispatchedTurnKeysByGoal[goalId] === turnKey",
+        "duplicateTurnRetriesByGoal",
+        "retries < 1",
+        "scheduleAuto(ctx, MIN_AUTO_WAKE_SECONDS)",
         "refusing duplicate dispatch",
+        'phase: "waiting"',
+        'ctx.ui.setStatus("loopx-pi", `LoopX | ${selectedGoalStatus} | ${disposition || "planning"}`)',
         'previousPhase === "waiting" && previousPlanId === planId',
         "Number.isFinite(Date.parse(raw.nextWakeAt))",
         "Complete one normal Pi turn before /loopx-auto start",
@@ -174,6 +214,12 @@ def test_pi_extension_exposes_fail_closed_persistent_multi_goal_continuation() -
     assert "setInterval(" not in source
     assert "child_process" not in source
     assert "outer_controller" not in source
+    assert '"--host",\n    "generic-cli"' not in source
+    assert re.search(
+        r'if \(autoState\.phase === "running"\) \{.*?phase: "waiting".*?scheduleAuto\(ctx, MIN_AUTO_WAKE_SECONDS\);',
+        source,
+        re.DOTALL,
+    )
 
 
 def test_pi_installer_is_explicit_and_has_a_non_mutating_preview() -> None:

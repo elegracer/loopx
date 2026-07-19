@@ -75,6 +75,7 @@ const GLOBAL_MANAGER_BY_LEGACY_NAME = new Map(
 
 const ACTIONS = [
   "doctor",
+  "check",
   "status",
   "start_goal",
   "connect",
@@ -88,6 +89,8 @@ const ACTIONS = [
   "todo_complete",
   "history",
   "diagnose",
+  "review_packet",
+  "evidence_log",
   "refresh_state",
   "spend_slot",
 ] as const;
@@ -117,7 +120,9 @@ const controlParameters = Type.Object({
   classification: Type.Optional(Type.String({ description: "Public-safe refresh classification" })),
   recommendedAction: Type.Optional(Type.String({ description: "Public-safe recommended action" })),
   deliveryBatchScale: Type.Optional(
-    StringEnum(["test_only", "single_surface", "multi_surface", "implementation"] as const),
+    StringEnum(
+      ["test_only", "single_surface", "multi_surface", "implementation", "single_segment", "bounded_segment"] as const,
+    ),
   ),
   deliveryOutcome: Type.Optional(
     StringEnum(["surface_only", "outcome_gap", "outcome_progress", "primary_goal_outcome"] as const),
@@ -129,8 +134,31 @@ const controlParameters = Type.Object({
   visionSummary: Type.Optional(Type.String({ description: "Bounded agent vision summary" })),
   visionRoleScope: Type.Optional(Type.String({ description: "Bounded agent role scope" })),
   visionAcceptance: Type.Optional(Type.String({ description: "Bounded agent vision acceptance summary" })),
+  autonomousReplanRecorded: Type.Optional(
+    Type.Boolean({ description: "Record that this refresh includes an autonomous replan" }),
+  ),
+  repairDeltaKind: Type.Optional(
+    StringEnum(
+      [
+        "effective_action",
+        "interaction_contract",
+        "runnable_todo_set",
+        "user_gate",
+        "blocker",
+        "successor_or_supersede",
+        "capability_gate",
+        "monitor_target",
+        "active_state_next_action",
+        "goal_vision_patch",
+        "goal_boundary_projection",
+        "no_followup",
+        "watch_lane_continuation",
+      ] as const,
+    ),
+  ),
   visionAdvancementPolicy: Type.Optional(StringEnum(["as_needed", "repeat_until_closed"] as const)),
   visionReplanTrigger: Type.Optional(Type.String({ description: "Bounded agent vision replan trigger" })),
+  visionDreamingPolicy: Type.Optional(Type.String({ description: "Bounded agent vision dreaming policy" })),
   visionLastPatch: Type.Optional(Type.String({ description: "Bounded summary of the latest vision patch" })),
   visionTodoDelta: Type.Optional(
     Type.Array(Type.String({ description: "Compact public-safe todo delta" }), { maxItems: 8 }),
@@ -138,6 +166,7 @@ const controlParameters = Type.Object({
   visionUnchangedReason: Type.Optional(
     Type.String({ description: "Reason an existing agent vision remains unchanged" }),
   ),
+  handoffOnly: Type.Optional(Type.Boolean({ description: "Return the minimized target-agent handoff packet" })),
   noFollowUp: Type.Optional(Type.Boolean({ description: "Record that a completed todo intentionally has no successor" })),
   execute: Type.Optional(Type.Boolean({ description: "Apply a mutation; false or omitted means preview/read-only" })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
@@ -161,18 +190,41 @@ type ControlParams = {
   nextAction?: string;
   classification?: string;
   recommendedAction?: string;
-  deliveryBatchScale?: "test_only" | "single_surface" | "multi_surface" | "implementation";
+  deliveryBatchScale?:
+    | "test_only"
+    | "single_surface"
+    | "multi_surface"
+    | "implementation"
+    | "single_segment"
+    | "bounded_segment";
   deliveryOutcome?: "surface_only" | "outcome_gap" | "outcome_progress" | "primary_goal_outcome";
   deliveryWorkspace?: string;
   visionState?: string;
   visionSummary?: string;
   visionRoleScope?: string;
   visionAcceptance?: string;
+  autonomousReplanRecorded?: boolean;
+  repairDeltaKind?:
+    | "effective_action"
+    | "interaction_contract"
+    | "runnable_todo_set"
+    | "user_gate"
+    | "blocker"
+    | "successor_or_supersede"
+    | "capability_gate"
+    | "monitor_target"
+    | "active_state_next_action"
+    | "goal_vision_patch"
+    | "goal_boundary_projection"
+    | "no_followup"
+    | "watch_lane_continuation";
   visionAdvancementPolicy?: "as_needed" | "repeat_until_closed";
   visionReplanTrigger?: string;
+  visionDreamingPolicy?: string;
   visionLastPatch?: string;
   visionTodoDelta?: string[];
   visionUnchangedReason?: string;
+  handoffOnly?: boolean;
   noFollowUp?: boolean;
   execute?: boolean;
   limit?: number;
@@ -199,6 +251,8 @@ type AutoState = {
   lastPlanId?: string;
   lastTurnKey?: string;
   dispatchedTurnKeysByGoal: Record<string, string>;
+  dispatchedProgressMarkersByGoal: Record<string, string>;
+  duplicateTurnRetriesByGoal: Record<string, number>;
   pauseReason?: string;
   revision: number;
 };
@@ -251,6 +305,8 @@ function defaultAutoState(project: string, agentId = DEFAULT_AGENT_ID): AutoStat
     maxTurns: DEFAULT_AUTO_MAX_TURNS,
     dispatchedTurns: 0,
     dispatchedTurnKeysByGoal: {},
+    dispatchedProgressMarkersByGoal: {},
+    duplicateTurnRetriesByGoal: {},
     revision: 0,
   };
 }
@@ -295,6 +351,22 @@ function normalizeAutoState(value: unknown, project: string): AutoState | undefi
             Object.entries(raw.dispatchedTurnKeysByGoal)
               .map(([goalId, turnKey]) => [String(goalId).trim(), String(turnKey).trim()])
               .filter(([goalId, turnKey]) => goalId && turnKey),
+          )
+        : {},
+    dispatchedProgressMarkersByGoal:
+      raw.dispatchedProgressMarkersByGoal && typeof raw.dispatchedProgressMarkersByGoal === "object"
+        ? Object.fromEntries(
+            Object.entries(raw.dispatchedProgressMarkersByGoal)
+              .map(([goalId, marker]) => [String(goalId).trim(), String(marker).trim()])
+              .filter(([goalId, marker]) => goalId && marker),
+          )
+        : {},
+    duplicateTurnRetriesByGoal:
+      raw.duplicateTurnRetriesByGoal && typeof raw.duplicateTurnRetriesByGoal === "object"
+        ? Object.fromEntries(
+            Object.entries(raw.duplicateTurnRetriesByGoal)
+              .map(([goalId, retries]) => [String(goalId).trim(), Math.max(0, Number(retries) || 0)])
+              .filter(([goalId]) => goalId),
           )
         : {},
     pauseReason: typeof raw.pauseReason === "string" && raw.pauseReason ? raw.pauseReason : undefined,
@@ -702,6 +774,9 @@ function buildArgs(
     case "doctor":
       args = ["--format", "json", "doctor", "--deep"];
       break;
+    case "check":
+      args = ["--format", "json", "check", "--scan-root", project, "--limit", limit];
+      break;
     case "status":
       args = ["--format", "json", "status", "--limit", limit];
       if (goalId) args.push("--goal-id", goalId, "--agent-id", agentId);
@@ -791,12 +866,8 @@ function buildArgs(
         required(goalId, "goalId"),
         "--agent-id",
         agentId,
-        "--host-surface",
-        "generic_cli",
-        "--scheduler-owner",
-        "agent_cli_loop",
-        "--execution-mode",
-        "interactive",
+        "--runtime-profile",
+        "pi",
         "--turn-envelope",
       ];
       addCapabilities(args);
@@ -812,7 +883,7 @@ function buildArgs(
         "--agent-id",
         agentId,
         "--host",
-        "generic-cli",
+        "pi",
         "--execution-mode",
         "interactive-visible",
         "--scheduler-owner",
@@ -894,6 +965,36 @@ function buildArgs(
       ];
       addCapabilities(args);
       break;
+    case "review_packet":
+      args = [
+        "--format",
+        "json",
+        "review-packet",
+        "--goal-id",
+        required(goalId, "goalId"),
+        "--agent-id",
+        agentId,
+        "--limit",
+        limit,
+      ];
+      if (params.actionKind) args.push("--action-kind", params.actionKind);
+      if (params.handoffOnly) args.push("--handoff-only");
+      break;
+    case "evidence_log":
+      args = [
+        "--format",
+        "json",
+        "evidence-log",
+        "--goal-id",
+        required(goalId, "goalId"),
+        "--agent-id",
+        agentId,
+        "--limit",
+        limit,
+        "--thin",
+      ];
+      if (params.todoId) args.push("--todo-id", params.todoId);
+      break;
     case "refresh_state":
       args = [
         "--format",
@@ -914,6 +1015,8 @@ function buildArgs(
       if (params.deliveryBatchScale) args.push("--delivery-batch-scale", params.deliveryBatchScale);
       if (params.deliveryOutcome) args.push("--delivery-outcome", params.deliveryOutcome);
       if (params.deliveryWorkspace) args.push("--delivery-workspace-path", deliveryWorkspace);
+      if (params.autonomousReplanRecorded) args.push("--autonomous-replan-recorded");
+      if (params.repairDeltaKind) args.push("--repair-delta-kind", params.repairDeltaKind);
       if (params.visionState) args.push("--vision-state", params.visionState);
       if (params.visionSummary) args.push("--vision-summary", params.visionSummary);
       if (params.visionRoleScope) args.push("--vision-role-scope", params.visionRoleScope);
@@ -922,6 +1025,7 @@ function buildArgs(
         args.push("--vision-advancement-policy", params.visionAdvancementPolicy);
       }
       if (params.visionReplanTrigger) args.push("--vision-replan-trigger", params.visionReplanTrigger);
+      if (params.visionDreamingPolicy) args.push("--vision-dreaming-policy", params.visionDreamingPolicy);
       if (params.visionLastPatch) args.push("--vision-last-patch", params.visionLastPatch);
       for (const delta of params.visionTodoDelta ?? []) args.push("--vision-todo-delta", delta);
       if (params.visionUnchangedReason) {
@@ -1071,6 +1175,36 @@ async function runLoopx(pi: ExtensionAPI, params: ControlParams, ctx: ExecContex
   };
 }
 
+async function readGoalProgressMarker(
+  pi: ExtensionAPI,
+  state: AutoState,
+  goalId: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const result = await pi.exec(
+    LOOPX_BIN,
+    [
+      "--format",
+      "json",
+      "--registry",
+      join(state.project, ".loopx", "registry.json"),
+      "history",
+      "--goal-id",
+      goalId,
+      "--limit",
+      "1",
+    ],
+    { cwd: state.project, signal, timeout: TOOL_TIMEOUT_MS },
+  );
+  if (result.code !== 0) throw new Error(result.stderr || result.stdout || "LoopX history failed");
+  const payload = JSON.parse(result.stdout || "{}") as { runs?: Array<Record<string, unknown>> };
+  const latest = payload.runs?.[0];
+  if (!latest) return "no-runs";
+  return [latest.generated_at, latest.classification, latest.agent_id]
+    .map((value) => String(value ?? ""))
+    .join("|");
+}
+
 async function runAutoPlan(
   pi: ExtensionAPI,
   state: AutoState,
@@ -1088,7 +1222,7 @@ async function runAutoPlan(
     "--agent-id",
     state.agentId,
     "--host",
-    "generic-cli",
+    "pi",
     "--execution-mode",
     "interactive-visible",
     "--scheduler-owner",
@@ -1195,6 +1329,8 @@ export default function loopxPiAdapter(pi: ExtensionAPI) {
       ...autoState,
       goalIds: [...autoState.goalIds],
       dispatchedTurnKeysByGoal: { ...autoState.dispatchedTurnKeysByGoal },
+      dispatchedProgressMarkersByGoal: { ...autoState.dispatchedProgressMarkersByGoal },
+      duplicateTurnRetriesByGoal: { ...autoState.duplicateTurnRetriesByGoal },
     });
     updateAutoStatus(ctx);
   }
@@ -1279,6 +1415,8 @@ export default function loopxPiAdapter(pi: ExtensionAPI) {
       const selection = plan.selection ?? {};
       const disposition = String(selection.disposition ?? "");
       const selected = selection.selected;
+      const selectedGoalStatus = String(selected?.goal_id ?? "all-goals");
+      ctx.ui.setStatus("loopx-pi", `LoopX | ${selectedGoalStatus} | ${disposition || "planning"}`);
       if (disposition === "run_current_session") {
         if (!selected) {
           pauseAuto(ctx, "planner returned run_current_session without a selected goal");
@@ -1298,7 +1436,30 @@ export default function loopxPiAdapter(pi: ExtensionAPI) {
           pauseAuto(ctx, "planner selected a goal outside the persisted controller scope");
           return;
         }
-        if (autoState.dispatchedTurnKeysByGoal[goalId] === turnKey) {
+        const progressMarker = await readGoalProgressMarker(pi, autoState, goalId, planAbort.signal);
+        const progressClassification = progressMarker.split("|")[1] || "no-runs";
+        ctx.ui.setStatus("loopx-pi", `LoopX | ${goalId} | ${progressClassification} | ${disposition}`);
+        const previousProgressMarker = autoState.dispatchedProgressMarkersByGoal[goalId];
+        if (
+          autoState.dispatchedTurnKeysByGoal[goalId] === turnKey &&
+          previousProgressMarker === progressMarker
+        ) {
+          const retries = autoState.duplicateTurnRetriesByGoal[goalId] ?? 0;
+          if (retries < 1) {
+            autoState = {
+              ...autoState,
+              phase: "waiting",
+              duplicateTurnRetriesByGoal: {
+                ...autoState.duplicateTurnRetriesByGoal,
+                [goalId]: retries + 1,
+              },
+              nextWakeAt: new Date(Date.now() + MIN_AUTO_WAKE_SECONDS * 1000).toISOString(),
+              pauseReason: undefined,
+            };
+            persistAutoState(ctx);
+            scheduleAuto(ctx, MIN_AUTO_WAKE_SECONDS);
+            return;
+          }
           pauseAuto(ctx, `no governed progress after ${turnKey}; refusing duplicate dispatch`);
           return;
         }
@@ -1312,6 +1473,14 @@ export default function loopxPiAdapter(pi: ExtensionAPI) {
           dispatchedTurnKeysByGoal: {
             ...autoState.dispatchedTurnKeysByGoal,
             [goalId]: turnKey,
+          },
+          dispatchedProgressMarkersByGoal: {
+            ...autoState.dispatchedProgressMarkersByGoal,
+            [goalId]: progressMarker,
+          },
+          duplicateTurnRetriesByGoal: {
+            ...autoState.duplicateTurnRetriesByGoal,
+            [goalId]: 0,
           },
           nextWakeAt: undefined,
           pauseReason: undefined,
@@ -1648,12 +1817,12 @@ export default function loopxPiAdapter(pi: ExtensionAPI) {
     if (autoState.phase === "running") {
       autoState = {
         ...autoState,
-        phase: "armed",
-        nextWakeAt: undefined,
+        phase: "waiting",
+        nextWakeAt: new Date(Date.now() + MIN_AUTO_WAKE_SECONDS * 1000).toISOString(),
         pauseReason: undefined,
       };
       persistAutoState(ctx);
-      await driveAuto(ctx, "agent_settled");
+      scheduleAuto(ctx, MIN_AUTO_WAKE_SECONDS);
       return;
     }
     if (autoState.phase === "armed") {

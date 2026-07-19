@@ -204,6 +204,27 @@ def test_turn_plan_projects_typed_recovery_routes(
     }
 
 
+def test_turn_plan_accepts_pi_visible_scheduler_context() -> None:
+    payload = build_loopx_turn_plan(
+        _envelope(),
+        host="pi",
+        execution_mode="interactive-visible",
+        scheduler_owner="agent_cli_loop",
+    )
+
+    assert payload["route"]["kind"] == LoopXTurnRoute.READY_FOR_HOST.value
+    assert payload["host"]["kind"] == "pi"
+    assert payload["scheduler_execution_context"] == {
+        "schema_version": "scheduler_execution_context_v0",
+        "host_surface": "pi",
+        "scheduler_owner": "agent_cli_loop",
+        "execution_mode": "interactive",
+        "source": "loopx_turn",
+        "valid": True,
+        "codex_app_applicability": "not_applicable",
+    }
+
+
 def test_turn_plan_rejects_contradictory_scheduler_owner() -> None:
     payload = build_loopx_turn_plan(
         _envelope(),

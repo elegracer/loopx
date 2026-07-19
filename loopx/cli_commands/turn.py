@@ -106,7 +106,7 @@ def register_turn_commands(
     )
     select.add_argument(
         "--host",
-        choices=["codex-cli", "claude-code", "generic-cli"],
+        choices=["codex-cli", "claude-code", "pi", "generic-cli"],
         default="generic-cli",
     )
     select.add_argument(
@@ -243,7 +243,7 @@ def _add_turn_decision_arguments(
     parser.add_argument("--agent-id", required=True)
     parser.add_argument(
         "--host",
-        choices=host_choices or ["codex-cli", "claude-code", "generic-cli"],
+        choices=host_choices or ["codex-cli", "claude-code", "pi", "generic-cli"],
         default=default_host,
     )
     parser.add_argument(

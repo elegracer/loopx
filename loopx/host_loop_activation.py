@@ -28,6 +28,7 @@ def scheduler_command_binding_for_agent_type(
         "codex-cli": SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
         "codex-ide-plugin": SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
         "claude-code": SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE,
+        "pi": SchedulerRuntimeProfile.PI_VISIBLE,
     }.get(canonical)
     if runtime_profile is not None:
         return {"runtime_profile": runtime_profile.value}

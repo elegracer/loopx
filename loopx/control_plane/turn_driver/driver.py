@@ -11,7 +11,7 @@ from .transaction import build_loopx_turn_transaction_plan
 LOOPX_TURN_PLAN_SCHEMA_VERSION = "loopx_turn_plan_v0"
 LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION = "loopx_turn_session_binding_v0"
 TURN_ENVELOPE_SCHEMA_VERSION = "loopx_turn_envelope_v0"
-SUPPORTED_HOSTS = {"codex-cli", "claude-code", "generic-cli"}
+SUPPORTED_HOSTS = {"codex-cli", "claude-code", "pi", "generic-cli"}
 SUPPORTED_EXECUTION_MODES = {"interactive-visible", "isolated-headless"}
 REPLAN_ACTIONS = {
     "autonomous_replan",

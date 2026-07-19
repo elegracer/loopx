@@ -14,6 +14,7 @@ class HostSurface(str, Enum):
     CODEX_CLI = "codex_cli"
     GENERIC_CLI = "generic_cli"
     CLAUDE_CODE = "claude_code"
+    PI = "pi"
     LOCAL_SCHEDULER = "local_scheduler"
 
 
@@ -34,6 +35,7 @@ class SchedulerRuntimeProfile(str, Enum):
     CODEX_APP_HEARTBEAT = "codex_app_heartbeat"
     CODEX_CLI_VISIBLE = "codex_cli"
     CLAUDE_CODE_VISIBLE = "claude_code"
+    PI_VISIBLE = "pi"
     GENERIC_CLI_AGENT_LOOP = "generic_cli"
     GENERIC_CLI_OUTER_CONTROLLER = "outer_controller"
 
@@ -51,6 +53,11 @@ _SCHEDULER_RUNTIME_PROFILE_CONTEXTS = {
     ),
     SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE: (
         HostSurface.CLAUDE_CODE,
+        SchedulerOwner.AGENT_CLI_LOOP,
+        ExecutionMode.INTERACTIVE,
+    ),
+    SchedulerRuntimeProfile.PI_VISIBLE: (
+        HostSurface.PI,
         SchedulerOwner.AGENT_CLI_LOOP,
         ExecutionMode.INTERACTIVE,
     ),
@@ -135,6 +142,7 @@ def _validation_errors(context: SchedulerExecutionContext) -> list[str]:
         HostSurface.CODEX_CLI,
         HostSurface.GENERIC_CLI,
         HostSurface.CLAUDE_CODE,
+        HostSurface.PI,
     }
     if context.host_surface is HostSurface.CODEX_APP:
         if context.scheduler_owner is not SchedulerOwner.HOST_AUTOMATION:
@@ -338,6 +346,7 @@ def scheduler_execution_context_for_turn(
         "codex-cli": HostSurface.CODEX_CLI.value,
         "generic-cli": HostSurface.GENERIC_CLI.value,
         "claude-code": HostSurface.CLAUDE_CODE.value,
+        "pi": HostSurface.PI.value,
     }.get(host, host)
     normalized_mode = {
         "interactive-visible": ExecutionMode.INTERACTIVE.value,
