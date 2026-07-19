@@ -18,12 +18,25 @@ LoopX is the deterministic local control plane. Pi is the interactive executor. 
 
 Use `loopx_control` for supported operations. Do not construct raw `loopx` shell commands unless the structured tool lacks the required action.
 
+## Structured Action Scope
+
+The structured tool covers outcome-level operations used by the visible long-running workflow: install/project checks, status and diagnosis, goal connection, agent registration, readiness and turn planning, todo lifecycle, quota, compact history, handoff/review packets, thin evidence ledgers, and governed state writeback.
+
+Do not mirror every LoopX CLI family into this tool. Keep these surfaces separate unless a real Pi workflow contract requires them:
+
+- global manager views and PR review use their dedicated slash commands and narrower skills;
+- provider sinks, presentations, research, benchmarks, extensions, reports, and issue/review batches remain capability-specific commands;
+- release/update, registry retirement, global route replacement, multi-agent launch, supervisor writes, hard leases, and external publication require their own explicit operator or repository gates;
+- setup prompt generators are internal implementation details of `start_goal`, `connect`, and the visible auto controller.
+
+Full Pi feature parity means the visible host can complete governed LoopX outcomes without losing safety or state contracts. It does not mean exposing every maintainer or provider mechanism through one broad tool.
+
 ## Host Mapping
 
 Treat pi as an external interactive CLI host:
 
 - start-goal host surface: `pi`
-- typed turn-plan host: `generic-cli`
+- typed turn-plan host: `pi`
 - execution mode: `interactive-visible`
 - scheduler owner: `agent_cli_loop`
 - LoopX 0.2.7 quota calls use the goal, agent, capabilities, and bounded turn envelope
@@ -50,6 +63,7 @@ The Pi host executes and schema-validates the canonical CLI packet before it ask
 - `/loopx-global-gates`: focus on open gates, blocked work, owners, and exact next questions.
 - `/loopx-global-todos`: focus on prioritized runnable, blocked, deferred-ready, and review work plus ownership.
 - `/loopx-global-risks`: focus on stale work, boundary warnings, failing checks, and rollback candidates.
+- Use `review_packet` for minimized target-agent handoff/readiness inspection and `evidence_log` for the thin public-safe agent/todo ledger before replan.
 
 All four commands use `loopx --format json global-summary` as their compact source. They must not approve gates, mutate todos, spend quota, merge, publish, or control automation. Legacy `/loop-global-*` forms canonicalize to these names. Unknown `/loopx-*` names fail closed to `loopx slash-commands` help.
 
@@ -129,6 +143,6 @@ Use `/loopx-auto status` to inspect state, `stop` to disable it, `resume` after 
 When behavior is surprising:
 
 1. Run `doctor`.
-2. Run goal-scoped `status`, then `diagnose` and `history`.
+2. Run goal-scoped `status`, then `diagnose`, `history`, and the relevant `review_packet` or `evidence_log` inspection.
 3. Compare the active todo, quota decision, latest refresh, and claimed agent.
 4. Do not bypass a contradictory gate. Report the exact contradiction and the smallest repair action.
